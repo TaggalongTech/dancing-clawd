@@ -1,0 +1,13 @@
+{
+  "name": "dancing-clawd",
+  "description": "A tiny dancing Claude mascot for Claude Code.",
+  "owner": {
+    "name": "TaggalongTech"
+  },
+  "plugins": [
+    {
+      "name": "dancing-clawd",
+      "source": "./"
+    }
+  ]
+}
