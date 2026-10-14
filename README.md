@@ -1,13 +1,17 @@
 # Dancing Clawd
 
-A tiny Claude mascot for Claude Code. He stands just above your prompt, 5 cells
-wide and 2 rows tall, drawn in the same block style as Claude Code's own logo,
-and he never stops dancing:
+A tiny Claude mascot for Claude Code. He stands just above your prompt, about
+5 cells wide and 2 rows tall, drawn in the same block style as Claude Code's own
+logo, and he never stops dancing:
 
 ```
- ▐▛█▜▌
- ▀▛▀▜▀
+ ▐▛█▛█
+ ▀▜▀▜▀▘
 ```
+
+His solid parts are painted as background color and he only ever stands on
+even pixels, so no frame uses `▛`: terminals draw that character as two pieces,
+which shows a hairline when cells are an odd number of pixels wide.
 
 - **While Claude works** he dances to the spinner's word. Each word gets its own
   dance: pondering words look around with a hand to the chin, cooking words stir

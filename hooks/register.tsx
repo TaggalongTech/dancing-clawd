@@ -4,18 +4,20 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { DemoLabel } from '../types'
 
 // A mini Clawd, drawn the way Claude Code's own logo is: quadrant blocks, so
-// each terminal cell is 2x2 pixels. The stage is 26x4 pixels, 13 cells by 2
-// rows; Clawd is 10x4 of it (5 cells) and moves about the rest, with room
-// for two of him.
-const W = 26
+// each terminal cell is 2x2 pixels. The stage is 28x4 pixels, 14 cells by 2
+// rows; Clawd is 11x4 of it and moves about the rest, with room for two of
+// him. He only ever stands on even pixels: that keeps every outline cell
+// clear of ▛, which terminals draw as two pieces with a hairline between.
+const W = 28
 const H = 4
 const HOME = 8 // Clawd's left edge, in pixels, when he stands centered
-const FAR_RIGHT = W - 10 // his left edge at the stage's right end
+const FAR_RIGHT = W - 12 // his left edge at the stage's right end
 export const COLUMNS = W / 2
 export const ROWS = H / 2
 export const TICK_MS = 120 // one move per beat while Claude works; one per two beats idle
 
 const ORANGE = 0xd77757
+const EYE = 0x191a1b
 const DEFAULT = 0x01000000 // the terminal's own color
 const QUADRANTS = ' ▘▝▀▖▌▞▛▗▚▐▜▄▙▟█' // indexed by mask: UL=1 UR=2 LL=4 LR=8
 
@@ -24,7 +26,7 @@ type Pose = {
   x: number // left edge on the stage, in pixels
   left: Arm
   right: Arm
-  stride: number // feet stay on the ground; walking steps them in this many pixels
+  stride: number // feet stay on the ground; walking steps them out to his edges (1)
   look: number // eyes glance left (-1) or right (1)
   face: 'front' | 'side' | 'back'
   blink: boolean
@@ -49,10 +51,10 @@ const PHRASES = {
   swayRight: [P({ x: HOME + 2, right: 'up', look: 1 }), P({ x: HOME + 2, look: 1 }), STAND],
   wave: [P({ left: 'up', look: -1 }), P({ right: 'up', look: 1 }), P({ left: 'up', look: -1 }), P({ right: 'up', look: 1 })],
   shimmy: [
-    P({ x: HOME + 1, left: 'up', right: 'down' }),
-    P({ x: HOME - 1, left: 'down', right: 'up' }),
-    P({ x: HOME + 1, left: 'up', right: 'down' }),
-    P({ x: HOME - 1, left: 'down', right: 'up' }),
+    P({ x: HOME + 2, left: 'up', right: 'down' }),
+    P({ x: HOME - 2, left: 'down', right: 'up' }),
+    P({ x: HOME + 2, left: 'up', right: 'down' }),
+    P({ x: HOME - 2, left: 'down', right: 'up' }),
     STAND,
   ],
   spin: [
@@ -79,9 +81,9 @@ const PHRASES = {
     P({ left: 'down', right: 'down', look: 1 }),
   ],
   frolic: [
-    P({ x: HOME - 1, left: 'up' }),
+    P({ x: HOME - 2, left: 'up' }),
     P({ x: HOME, right: 'up' }),
-    P({ x: HOME + 1, right: 'up' }),
+    P({ x: HOME + 2, right: 'up' }),
     P({ x: HOME, left: 'up' }),
   ],
   flail: [
@@ -94,10 +96,10 @@ const PHRASES = {
 } satisfies Record<string, Pose[]>
 type Phrase = keyof typeof PHRASES
 
-// Walking: a step a beat, feet stepping in and out, from one spot to another.
+// Walking: a cell a beat, feet stepping out and in, from one spot to another.
 function walk(from: number, to: number, look: number): Pose[] {
   const poses: Pose[] = []
-  const dir = Math.sign(to - from)
+  const dir = 2 * Math.sign(to - from)
   for (let x = from, i = 0; x !== to + dir; x += dir, i++) {
     poses.push(P({ x, look, stride: i % 2 }))
   }
@@ -233,17 +235,18 @@ const together = (pose: Partial<Pose> = {}, dx = 0): Frame => [
 const one = (pose: Partial<Pose> = {}): Frame => [P(pose)]
 const halfway: Frame = [P({ x: HOME - 4, look: 1 }), P({ x: HOME + 4, look: -1 })]
 const stretched: Frame = [P({ x: HOME - 2 }), P({ x: HOME + 2 })]
-const highFive = facing({ x: TWIN_L + 1, right: 'up' }, { x: TWIN_R - 1, left: 'up' })
+// The right twin steps in so their raised hands meet on one pixel.
+const highFive = facing({ right: 'up' }, { x: TWIN_L + 10, left: 'up' })
 
 export const SPLIT: Dance = {
   name: 'split',
   frames: [
     // shake, stretch, split
     one(),
-    one({ x: HOME - 1, blink: true }),
-    one({ x: HOME + 1, blink: true }),
-    one({ x: HOME - 1, blink: true }),
-    one({ x: HOME + 1, blink: true }),
+    one({ x: HOME - 2, blink: true }),
+    one({ x: HOME + 2, blink: true }),
+    one({ x: HOME - 2, blink: true }),
+    one({ x: HOME + 2, blink: true }),
     stretched,
     halfway,
     facing(),
@@ -295,30 +298,34 @@ function pixels(frame: Frame): Uint8Array {
   return grid
 }
 
+const EYE_PIXEL = 2
+
 function draw(grid: Uint8Array, p: Pose) {
   const set = (x: number, y: number, value = 1) => {
     const at = p.x + x
     if (at >= 0 && at < W && y >= 0 && y < H) grid[y * W + at] = value
   }
 
-  // An 8x3 body (6 wide side-on), eyes two pixels in from its edges, an arm
-  // each side, two feet.
+  // A 9x3 body (7 wide side-on), eyes two pixels in from its edges, an arm
+  // each side, two feet. Pixels are 1 for body, 2 for an eye.
   const side = p.face === 'side'
-  for (let y = 0; y < 3; y++) for (let x = side ? 2 : 1; x <= (side ? 7 : 8); x++) set(x, y)
+  for (let y = 0; y < 3; y++) for (let x = side ? 2 : 1; x <= (side ? 8 : 9); x++) set(x, y)
   if (!p.blink && p.face === 'front') {
-    set(3 + p.look, 1, 0)
-    set(6 + p.look, 1, 0)
+    set(3 + p.look, 1, EYE_PIXEL)
+    set(7 + p.look, 1, EYE_PIXEL)
   }
-  if (!p.blink && side) set(p.look < 0 ? 3 : 6, 1, 0)
+  if (!p.blink && side) set(p.look < 0 ? 3 : 7, 1, EYE_PIXEL)
 
   const ARM_ROW: Record<Arm, number | null> = { up: 0, mid: 2, down: 3, in: null }
   const leftRow = side ? null : ARM_ROW[p.left]
   const rightRow = side ? null : ARM_ROW[p.right]
   if (leftRow !== null) set(0, leftRow)
-  if (rightRow !== null) set(9, rightRow)
+  if (rightRow !== null) set(10, rightRow)
 
-  set(2 + p.stride, 3)
-  set(7 - p.stride, 3)
+  // Feet on odd pixels, the right half of a cell, so the body above them is
+  // never drawn with ▛.
+  set(3 - 2 * p.stride, 3)
+  set(7 + 2 * p.stride, 3)
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -335,6 +342,12 @@ function base64(bytes: Uint8Array): string {
 }
 
 // A Raster's cells: per cell, little-endian u32 [codePoint, foreground, background].
+//
+// A cell wholly inside Clawd is painted as background, with his eye drawn on
+// it: terminals paint backgrounds as solid blocks, while a block character
+// such as ▛ is two pieces that can leave a hairline between them. A cell on
+// his outline must show the terminal's own background, so it stays a block
+// character in orange.
 export function encode(frame: Frame): string {
   const grid = pixels(frame)
   const at = (x: number, y: number) => grid[y * W + x] ?? 0
@@ -345,10 +358,14 @@ export function encode(frame: Frame): string {
     for (let c = 0; c < COLUMNS; c++) {
       const x = c * 2
       const y = r * 2
-      const mask = at(x, y) | (at(x + 1, y) << 1) | (at(x, y + 1) << 2) | (at(x + 1, y + 1) << 3)
+      const quadrants = [at(x, y), at(x + 1, y), at(x, y + 1), at(x + 1, y + 1)]
+      const maskOf = (value: number) => quadrants.reduce((mask, q, i) => (q === value ? mask | (1 << i) : mask), 0)
+      const isInside = !quadrants.includes(0)
+      const mask = isInside ? maskOf(EYE_PIXEL) : maskOf(1)
+      const ink = isInside ? EYE : ORANGE
       view.setUint32(offset, QUADRANTS.charCodeAt(mask), true)
-      view.setUint32(offset + 4, mask ? ORANGE : DEFAULT, true)
-      view.setUint32(offset + 8, DEFAULT, true)
+      view.setUint32(offset + 4, mask ? ink : DEFAULT, true)
+      view.setUint32(offset + 8, isInside ? ORANGE : DEFAULT, true)
       offset += 12
     }
   }

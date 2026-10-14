@@ -161,3 +161,29 @@ test('a secret turn plays the split once, then the spinner word dance', async ($
   expect(blits).toHaveLength(8)
   for (const cells of blits) expect(framesOf(danceFor('Moonwalking'))).toContain(cells)
 })
+
+// Every cell of a frame as [codePoint, foreground, background].
+function cellsOf(cells: string): [number, number, number][] {
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  const bytes: number[] = []
+  for (let i = 0; i < cells.length; i += 4) {
+    const n = [0, 1, 2, 3].reduce((acc, k) => (acc << 6) | Math.max(0, B64.indexOf(cells[i + k] ?? '=')), 0)
+    bytes.push((n >> 16) & 255, (n >> 8) & 255, n & 255)
+  }
+  const view = new DataView(Uint8Array.from(bytes).buffer)
+  const out: [number, number, number][] = []
+  for (let o = 0; o + 12 <= bytes.length; o += 12) {
+    out.push([view.getUint32(o, true), view.getUint32(o + 4, true), view.getUint32(o + 8, true)])
+  }
+  return out
+}
+
+test('no frame of any dance draws ▛, which terminals split with a hairline', () => {
+  const dances = [IDLE, SPLIT, ...WORDS.map(danceFor), ...DEMO.map(act => act.dance)]
+  for (const dance of dances) {
+    for (const frame of framesOf(dance)) {
+      const seamy = cellsOf(frame).filter(([glyph]) => glyph === 0x259b)
+      expect(seamy).toEqual([])
+    }
+  }
+})
