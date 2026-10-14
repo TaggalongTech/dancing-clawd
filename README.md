@@ -1,5 +1,7 @@
 # Dancing Clawd
 
+*An unofficial fan mod. Not affiliated with or endorsed by Anthropic.*
+
 A tiny Claude mascot for Claude Code. He stands just above your prompt, about
 5 cells wide and 2 rows tall, drawn in the same block style as Claude Code's own
 logo, and he never stops dancing:
@@ -22,8 +24,13 @@ which shows a hairline when cells are an odd number of pixels wide.
 - **Between turns** he grooves at half speed.
 - **Now and then** he does something else entirely. Keep an eye on him.
 
-Terminal only. Collapse him with `ctrl+x ctrl+a` or the `[-]` at the end of his
-strip.
+## Requirements
+
+- Claude Code 2.1.296 or newer. He's a mod built on function hooks, an
+  early-access part of Claude Code; older versions may not load him.
+- Claude Code running in a terminal. He doesn't appear in the desktop app.
+- Looks best on a dark theme. Built and tested in VS Code's integrated terminal;
+  other terminals draw block characters their own way and may differ slightly.
 
 ## Install
 
@@ -34,6 +41,12 @@ Type this at the prompt of a Claude Code terminal session:
 ```
 
 Answer `y` to add the marketplace, then press Enter for the user scope.
+
+## Tuck him away, or remove him
+
+- Collapse his strip with `ctrl+x ctrl+a`, or click the `[-]` at its end. Do the
+  same to bring him back.
+- Remove him for good with `/plugin uninstall dancing-clawd`.
 
 ## See every dance
 
@@ -61,3 +74,7 @@ or two copies load.
 - `tests/dance.test.tsx`: run with `claude plugin test .`
 - Check before committing: `claude plugin validate .` and, once Claude Code has
   loaded the folder (it writes `.claude-plugin/types/`), `npx tsc -p .`
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -6,5 +6,6 @@
     "name": "TaggalongTech"
   },
   "repository": "https://github.com/TaggalongTech/dancing-clawd",
+  "license": "MIT",
   "types": "./types/index.d.ts"
 }
