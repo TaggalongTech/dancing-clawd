@@ -348,12 +348,13 @@ function base64(bytes: Uint8Array): string {
 // such as ▛ is two pieces that can leave a hairline between them. A cell on
 // his outline must show the terminal's own background, so it stays a block
 // character in orange.
-export function encode(frame: Frame): string {
+type Cell = [glyph: number, foreground: number, background: number]
+const BLANK: Cell = [0x20, DEFAULT, DEFAULT]
+
+function cellsOf(frame: Frame): Cell[] {
   const grid = pixels(frame)
   const at = (x: number, y: number) => grid[y * W + x] ?? 0
-  const bytes = new Uint8Array(COLUMNS * ROWS * 12)
-  const view = new DataView(bytes.buffer)
-  let offset = 0
+  const cells: Cell[] = []
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLUMNS; c++) {
       const x = c * 2
@@ -363,14 +364,145 @@ export function encode(frame: Frame): string {
       const isInside = !quadrants.includes(0)
       const mask = isInside ? maskOf(EYE_PIXEL) : maskOf(1)
       const ink = isInside ? EYE : ORANGE
-      view.setUint32(offset, QUADRANTS.charCodeAt(mask), true)
-      view.setUint32(offset + 4, mask ? ink : DEFAULT, true)
-      view.setUint32(offset + 8, isInside ? ORANGE : DEFAULT, true)
-      offset += 12
+      cells.push([QUADRANTS.charCodeAt(mask), mask ? ink : DEFAULT, isInside ? ORANGE : DEFAULT])
     }
   }
+  return cells
+}
+
+function pack(cells: Cell[]): string {
+  const bytes = new Uint8Array(cells.length * 12)
+  const view = new DataView(bytes.buffer)
+  cells.forEach(([glyph, foreground, background], i) => {
+    view.setUint32(i * 12, glyph, true)
+    view.setUint32(i * 12 + 4, foreground, true)
+    view.setUint32(i * 12 + 8, background, true)
+  })
   return base64(bytes)
 }
+
+export function encode(frame: Frame): string {
+  return pack(cellsOf(frame))
+}
+
+// Disco: an easter egg. A certain phrase in a prompt sets a disco ball down
+// beside Clawd for that whole reply (DISCO_MIN_BEATS at least): its facets
+// spin, sparkles twinkle, and a burst pops off his hand whenever he strikes a
+// pose. The phrase lives here only as its SHA-256 fingerprint.
+const DISCO_FINGERPRINT = 'cd6d54a65a9209b90d5568f8fe39c82069f35a6558881bc1db3a6dd863656bf2'
+const DISCO_WORDS = 3
+export const DISCO_MIN_BEATS = Math.ceil(15_000 / TICK_MS)
+
+export function wordsOf(text: string): string[] {
+  return text.toLowerCase().replace(/['’]/g, '').split(/[^a-z0-9]+/).filter(Boolean)
+}
+
+async function sha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+// Whether any run of `size` words in the text has the fingerprint.
+export async function hasPhrase(text: string, fingerprint = DISCO_FINGERPRINT, size = DISCO_WORDS): Promise<boolean> {
+  const words = wordsOf(text).slice(0, 2_000)
+  for (let i = 0; i + size <= words.length; i++) {
+    if ((await sha256(words.slice(i, i + size).join(' '))) === fingerprint) return true
+  }
+  return false
+}
+
+const SILVER = 0xc9ccd1
+const FACET_DARK = 0x6f7680
+const FACET_LIGHT = 0xe9ebee
+const GLINT = 0xffffff
+const SPARKLE_COLORS = [0xf7e7b4, 0xffb3c7, 0xa8e6ff, 0xcdb8ff, 0xffffff] // champagne, rose, aqua, lilac, white
+const SPARKLE = ['·', '✧', '✦', '✧', '·'] // a sparkle's life, a beat a step
+const BALL = ['..####..', '.######.', '.######.', '..####..'] // 8x4 pixels at the stage's left
+
+// He dances right of the ball, on even pixels like everywhere else.
+const DISCO_HOME = 12
+const DISCO_POSES: Pose[] = [
+  // the point: up to the right, then up to the left
+  P({ x: DISCO_HOME + 2, right: 'up', left: 'down', look: 1 }),
+  P({ x: DISCO_HOME + 2, right: 'up', left: 'down', look: 1 }),
+  P({ x: DISCO_HOME }),
+  P({ x: DISCO_HOME - 2, left: 'up', right: 'down', look: -1 }),
+  P({ x: DISCO_HOME - 2, left: 'up', right: 'down', look: -1 }),
+  P({ x: DISCO_HOME }),
+  // raise the roof
+  P({ x: DISCO_HOME, left: 'up', right: 'up' }),
+  P({ x: DISCO_HOME }),
+  P({ x: DISCO_HOME, left: 'up', right: 'up', blink: true }),
+  P({ x: DISCO_HOME }),
+  // spin, and ta-da
+  P({ x: DISCO_HOME, face: 'side', look: 1, left: 'in', right: 'in' }),
+  P({ x: DISCO_HOME, face: 'back' }),
+  P({ x: DISCO_HOME, face: 'side', look: -1, left: 'in', right: 'in' }),
+  P({ x: DISCO_HOME, left: 'up', right: 'up' }),
+  P({ x: DISCO_HOME }),
+  P({ x: DISCO_HOME }),
+]
+export const DISCO_DANCE: Dance = { name: 'disco', frames: solo(DISCO_POSES) }
+
+const poseAt = (beat: number) => DISCO_POSES[beat % DISCO_POSES.length]!
+
+// The sparkles a beat sets off, as [row, column, color]: now and then one
+// anywhere, and a burst beside each hand he has just thrown up.
+function sparksAt(beat: number): [number, number, number][] {
+  const h = hash(`spark:${beat}`)
+  const sparks: [number, number, number][] = []
+  if (h % 5 < 3) {
+    sparks.push([(h >>> 4) % ROWS, (h >>> 8) % COLUMNS, SPARKLE_COLORS[(h >>> 16) % SPARKLE_COLORS.length]!])
+  }
+  const pose = poseAt(beat)
+  const before = beat > 0 ? poseAt(beat - 1) : STAND
+  const color = (k: number) => SPARKLE_COLORS[(beat + k) % SPARKLE_COLORS.length]!
+  if (pose.left === 'up' && before.left !== 'up') {
+    const hand = pose.x >> 1
+    sparks.push([0, hand - 1, color(0)], [0, hand - 2, color(1)], [1, hand - 1, color(2)])
+  }
+  if (pose.right === 'up' && before.right !== 'up') {
+    const hand = (pose.x + 10) >> 1
+    sparks.push([0, hand + 1, color(3)], [0, hand + 2, color(4)], [1, hand + 1, color(0)])
+  }
+  return sparks
+}
+
+export function discoCells(beat: number): Cell[] {
+  const cells = cellsOf([poseAt(beat)])
+
+  // The ball, its facets flipping each beat as it turns and a glint going round.
+  const spin = beat % 2
+  const glint = (beat >> 1) % 4
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < BALL[0]!.length / 2; c++) {
+      const on = (dx: number, dy: number) => (BALL[r * 2 + dy]![c * 2 + dx] === '#' ? 1 : 0)
+      const mask = on(0, 0) | (on(1, 0) << 1) | (on(0, 1) << 2) | (on(1, 1) << 3)
+      if (mask === 15) {
+        const facet = (r + c + spin) % 2 ? '▚' : '▞'
+        const isGlint = [1, 2, COLUMNS + 2, COLUMNS + 1][glint] === r * COLUMNS + c
+        cells[r * COLUMNS + c] = [facet.charCodeAt(0), isGlint ? GLINT : FACET_LIGHT, FACET_DARK]
+      } else if (mask) {
+        cells[r * COLUMNS + c] = [QUADRANTS.charCodeAt(mask), SILVER, DEFAULT]
+      }
+    }
+  }
+
+  // Sparkles from the last few beats, each a step further through its life.
+  for (let age = SPARKLE.length - 1; age >= 0; age--) {
+    if (beat - age < 0) continue
+    for (const [row, column, color] of sparksAt(beat - age)) {
+      if (column < 0 || column >= COLUMNS) continue
+      const cell = row * COLUMNS + column
+      const [glyph, , background] = cells[cell] ?? BLANK
+      if (glyph !== 0x20 || background !== DEFAULT) continue
+      cells[cell] = [SPARKLE[age]!.charCodeAt(0), color, DEFAULT]
+    }
+  }
+  return cells
+}
+
+export const discoFrame = (beat: number) => pack(discoCells(beat))
 
 const frames = new Map<string, string[]>()
 export function framesOf(dance: Dance): string[] {
@@ -421,6 +553,9 @@ let ticks = 0
 let demoAct = -1 // the DEMO entry playing, or -1
 let demoBeat = 0
 let secretBeat = -1 // the SPLIT frame playing, or -1
+let discoBeat = -1 // beats into the party, or -1
+let discoTurn: string | undefined // the reply the party lasts for
+let isDiscoTurnDone = false
 
 function paint($: EngineInterface, cells: string) {
   if (cells === shown) return
@@ -435,6 +570,7 @@ function paint($: EngineInterface, cells: string) {
 function tick($: EngineInterface) {
   ticks += 1
   if (demoAct >= 0) return stepDemo($)
+  if (discoBeat >= 0) return stepDisco($)
   if (secretBeat >= 0) return stepSecret($)
   if (!isWorking && ticks % 2 === 1) return
   const next = isWorking ? danceFor(spinnerWord) : IDLE
@@ -479,6 +615,19 @@ function stepSecret($: EngineInterface) {
   }
 }
 
+// The party lasts the reply it started with, and DISCO_MIN_BEATS at least; a
+// prompt that starts no reply (a slash command) ends it after the minimum.
+function stepDisco($: EngineInterface) {
+  paint($, discoFrame(discoBeat))
+  discoBeat += 1
+  if (discoTurn === undefined && discoBeat > 16) isDiscoTurnDone = true
+  if (isDiscoTurnDone && discoBeat >= DISCO_MIN_BEATS) {
+    discoBeat = -1
+    discoTurn = undefined
+    dance = ''
+  }
+}
+
 function startDancing($: EngineInterface) {
   if (isTicking) return
   isTicking = true
@@ -507,12 +656,25 @@ export const register: Register = on => {
     startDancing($)
     isWorking = true
     turnId = e.turnId
-    if (isSecretTurn(e.turnId) && demoAct < 0) secretBeat = 0
+    if (discoBeat >= 0 && discoTurn === undefined) discoTurn = e.turnId
+    else if (isSecretTurn(e.turnId) && demoAct < 0 && discoBeat < 0) secretBeat = 0
     return next(e)
   })
 
   on('turn.complete', ($, e, next) => {
     if (e.agentId === undefined && e.turnId === turnId) isWorking = false
+    if (e.agentId === undefined && e.turnId === discoTurn) isDiscoTurnDone = true
+    return next(e)
+  })
+
+  // The prompt goes on to Claude unchanged; the right words also start a party.
+  on('prompt.submit', async ($, e, next) => {
+    if (await hasPhrase(e.text)) {
+      startDancing($)
+      discoBeat = 0
+      discoTurn = e.turnId
+      isDiscoTurnDone = false
+    }
     return next(e)
   })
 

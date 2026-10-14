@@ -1,7 +1,19 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { DEMO, DEMO_MS, danceFor, framesOf, IDLE, isSecretTurn, SPLIT, TICK_MS } from '../hooks/register'
+import {
+  DEMO,
+  DEMO_MS,
+  danceFor,
+  discoFrame,
+  framesOf,
+  hasPhrase,
+  IDLE,
+  isSecretTurn,
+  SPLIT,
+  TICK_MS,
+  wordsOf,
+} from '../hooks/register'
 
 const BAND = {
   plugin: 'dancing-clawd',
@@ -51,6 +63,7 @@ function engine(on: On): string[] {
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('prompt.submit', ($, e) => ({ text: e.text }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>engine</Text>
@@ -186,4 +199,48 @@ test('no frame of any dance draws ▛, which terminals split with a hairline', (
       expect(seamy).toEqual([])
     }
   }
+})
+
+async function fingerprint(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+// The real phrase never appears here: these use a stand-in with its own fingerprint.
+test('a phrase is found anywhere in a prompt, whatever its case and punctuation', async () => {
+  expect(wordsOf("Let’s GO, party-people!!")).toEqual(['lets', 'go', 'party', 'people'])
+  const standIn = await fingerprint('hello there friend')
+  expect(await hasPhrase('Well... HELLO, there friend!', standIn, 3)).toBe(true)
+  expect(await hasPhrase('hello friend there', standIn, 3)).toBe(false)
+  expect(await hasPhrase('make it dance', standIn, 3)).toBe(false)
+})
+
+test('an ordinary prompt starts no party', async ($, on) => {
+  const clock = mock.clock(on)
+  const blits = engine(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.ui.mount(BAND)
+  await $.prompt.submit({
+    text: 'make it dance, and lets get the tests passing',
+    wait: false,
+    origin: { kind: 'composer' },
+  })
+  await clock.advance(TICK_MS * 16)
+  expect(blits.length).toBeGreaterThan(0)
+  for (const cells of blits) expect(framesOf(IDLE)).toContain(cells)
+})
+
+test('the disco ball spins beside Clawd and sparkles pop, with no ▛ anywhere', () => {
+  const sparkles = new Set([0xb7, 0x2727, 0x2726])
+  let sparkled = 0
+  for (let beat = 0; beat < 64; beat++) {
+    const cells = cellsOf(discoFrame(beat))
+    expect([0x259a, 0x259e]).toContain(cells[1]![0])
+    expect([0x259a, 0x259e]).toContain(cells[2]![0])
+    expect(cells.filter(([glyph]) => glyph === 0x259b)).toEqual([])
+    if (cells.some(([glyph]) => sparkles.has(glyph))) sparkled += 1
+  }
+  expect(sparkled).toBeGreaterThan(32)
+  expect(cellsOf(discoFrame(0))[1]![0]).not.toBe(cellsOf(discoFrame(1))[1]![0])
 })
