@@ -4,9 +4,9 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { DemoLabel } from '../types'
 
 // A mini Clawd, drawn the way Claude Code's own logo is: quadrant blocks, so
-// each terminal cell is 2x2 pixels. The stage is 16x4 pixels, 8 cells by 2
-// rows; Clawd is 8x4 of it (4 cells) and moves about the rest.
-const W = 16
+// each terminal cell is 2x2 pixels. The stage is 18x4 pixels, 9 cells by 2
+// rows; Clawd is 10x4 of it (5 cells) and moves about the rest.
+const W = 18
 const H = 4
 const HOME = 4 // Clawd's left edge, in pixels, when he stands centered
 export const COLUMNS = W / 2
@@ -219,22 +219,24 @@ function pixels(p: Pose): Uint8Array {
     if (at >= 0 && at < W && y >= 0 && y < H) grid[y * W + at] = value
   }
 
+  // An 8x3 body (6 wide side-on), eyes two pixels in from its edges, an arm
+  // each side, two feet.
   const side = p.face === 'side'
-  for (let y = 0; y < 3; y++) for (let x = side ? 2 : 1; x <= (side ? 5 : 6); x++) set(x, y)
+  for (let y = 0; y < 3; y++) for (let x = side ? 2 : 1; x <= (side ? 7 : 8); x++) set(x, y)
   if (!p.blink && p.face === 'front') {
-    set(2 + p.look, 1, 0)
-    set(5 + p.look, 1, 0)
+    set(3 + p.look, 1, 0)
+    set(6 + p.look, 1, 0)
   }
-  if (!p.blink && side) set(p.look < 0 ? 3 : 4, 1, 0)
+  if (!p.blink && side) set(p.look < 0 ? 3 : 6, 1, 0)
 
   const ARM_ROW: Record<Arm, number | null> = { up: 0, mid: 2, down: 3, in: null }
   const leftRow = side ? null : ARM_ROW[p.left]
   const rightRow = side ? null : ARM_ROW[p.right]
   if (leftRow !== null) set(0, leftRow)
-  if (rightRow !== null) set(7, rightRow)
+  if (rightRow !== null) set(9, rightRow)
 
   if (p.leftFoot) set(2, 3)
-  if (p.rightFoot) set(5, 3)
+  if (p.rightFoot) set(7, 3)
   return grid
 }
 
