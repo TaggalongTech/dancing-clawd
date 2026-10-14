@@ -4,16 +4,9 @@
 
 A tiny Claude mascot for Claude Code. He stands just above your prompt, about
 5 cells wide and 2 rows tall, drawn in the same block style as Claude Code's own
-logo, and he never stops dancing:
+logo, and he loves to dance:
 
-```
- ▐▛█▛█
- ▀▜▀▜▀▘
-```
-
-His solid parts are painted as background color and he only ever stands on
-even pixels, so no frame uses `▛`: terminals draw that character as two pieces,
-which shows a hairline when cells are an odd number of pixels wide.
+![Clawd dancing to Claude Code's spinner words, chilling, and typing in day mode](assets/preview.svg)
 
 - **While Claude works** he dances to the spinner's word. Each word gets its own
   dance: pondering words look around with a hand to the chin, cooking words stir
@@ -22,6 +15,11 @@ which shows a hairline when cells are an odd number of pixels wide.
 - **Only "Moonwalking…"** gets the moonwalk: he glides backwards across his strip,
   facing forward.
 - **Between turns** he grooves at half speed.
+- **`/clawd-chill`** tells him to stop dancing and chill: eyes shut, a cigarette
+  in hand, smoke curling up. Run it again to get him dancing. He remembers
+  between sessions.
+- **On a light theme** he won't dance. Clawd only dances in the dark; by day
+  he's a nerd in glasses and a bow tie who types away while Claude works.
 - **Now and then** he does something else entirely. Keep an eye on him.
 
 ## Requirements
@@ -54,8 +52,8 @@ Answer `y` to add the marketplace, then press Enter for the user scope.
 /clawd-demo
 ```
 
-Plays all 14 dances back to back (about 35 seconds), each one labeled with its
-spinner word.
+Plays every dance back to back, then a look at `/clawd-chill` and day mode,
+each labeled with the spinner word or mode it belongs to.
 
 ## Working on it
 
@@ -72,6 +70,12 @@ or two copies load.
 - `hooks/register.tsx`: the sprite, the dances, and the hooks. Moves are poses
   strung into phrases (`PHRASES`); spinner words pick phrases through `THEMES`.
 - `tests/dance.test.tsx`: run with `claude plugin test .`
+- `scripts/build_preview.py`: rebuilds `assets/preview.svg` from his real frames
+  after you change a move: `python3 scripts/build_preview.py`
+- His solid parts are painted as background color and he only ever stands on
+  even pixels, so no frame uses `▛`: terminals draw that character as two
+  pieces, which shows a hairline when cells are an odd number of pixels wide.
+  A test checks every frame.
 - Check before committing: `claude plugin validate .` and, once Claude Code has
   loaded the folder (it writes `.claude-plugin/types/`), `npx tsc -p .`
 

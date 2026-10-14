@@ -198,7 +198,9 @@ function mix(word: string, count: number, skip: Phrase[] = []): Phrase[] {
 
 // A frame is everyone on stage at one beat: Clawd, or Clawd and his twin.
 type Frame = Pose[]
-export type Dance = { name: string; frames: Frame[] }
+// `tempo` is beats per frame (1 when absent); `dress` adds what poses can't
+// draw, such as glasses, a cigarette or smoke, to a frame's cells.
+export type Dance = { name: string; frames: Frame[]; tempo?: number; dress?: (cells: Cell[], frame: number) => void }
 const solo = (poses: Pose[]): Frame[] => poses.map(pose => [pose])
 
 export function danceFor(word: string | undefined): Dance {
@@ -218,6 +220,7 @@ export function danceFor(word: string | undefined): Dance {
 export const IDLE: Dance = {
   name: 'idle',
   frames: solo((['roof', 'swayLeft', 'swayRight', 'wave'] as Phrase[]).flatMap(p => PHRASES[p])),
+  tempo: 2,
 }
 
 // The secret move: Clawd shakes, splits in two, the twins dance facing each
@@ -504,11 +507,90 @@ export function discoCells(beat: number): Cell[] {
 
 export const discoFrame = (beat: number) => pack(discoCells(beat))
 
+function put(cells: Cell[], row: number, column: number, glyph: string, foreground: number, background = DEFAULT) {
+  if (column >= 0 && column < COLUMNS) cells[row * COLUMNS + column] = [glyph.charCodeAt(0), foreground, background]
+}
+
+// Calm (/clawd-chill): no dancing. He chills, eyes shut, a cigarette in hand,
+// ASCII smoke curling up from the tip; the tip glows when he takes a drag, and
+// now and then he opens his eyes to watch the smoke.
+const SMOKE = [0xb8b8b8, 0x8f8f8f, 0x666666] // fading as it rises
+const PUFF: [row: number, dx: number, glyph: string][] = [
+  [0, 0, '.'],
+  [0, 0, '('],
+  [0, 1, ')'],
+  [0, 1, '~'],
+  [0, 2, '~'],
+  [0, 2, "'"],
+]
+const CALM_FRAMES = 24
+const PUFF_EVERY = 4
+export const CALM: Dance = {
+  name: 'calm',
+  frames: solo(Array.from({ length: CALM_FRAMES }, (_, i) => P({ blink: i < 14 || i >= 18, look: 1 }))),
+  tempo: 3,
+  dress: (cells, i) => {
+    const c = HOME >> 1
+    const tip = c + 7
+    const isDrag = i % 12 < 2
+    // Shut eyes as two relaxed lines.
+    if (i < 14 || i >= 18) {
+      put(cells, 0, c + 1, '▁', EYE, ORANGE)
+      put(cells, 0, c + 3, '▁', EYE, ORANGE)
+    }
+    // His hand, the cigarette and its tip, in pixels at hand height.
+    put(cells, 1, c + 5, '▀', ORANGE)
+    put(cells, 1, c + 6, '▀', 0xf2f2f2)
+    put(cells, 1, tip, '▘', isDrag ? 0xffb066 : 0xe8553d)
+    for (let start = i - (PUFF.length - 1); start <= i; start++) {
+      if ((start + CALM_FRAMES) % PUFF_EVERY !== 0) continue
+      const step = i - start
+      const [row, dx, glyph] = PUFF[step]!
+      put(cells, row, tip + dx, glyph, SMOKE[step >> 1]!)
+    }
+  },
+}
+
+// Day mode, on a light theme: Clawd only dances in the dark. By day he's a
+// nerd in ʘ─ʘ glasses and a navy bow tie, typing away while Claude works and
+// pushing his glasses up now and then.
+const NAVY = 0x1f3a68
+export const isLightTheme = (theme: unknown) => typeof theme === 'string' && theme.startsWith('light')
+const nerdDress = (poses: Pose[]) => (cells: Cell[], i: number) => {
+  const c = poses[i]!.x >> 1
+  put(cells, 0, c + 1, 'ʘ', EYE, ORANGE)
+  put(cells, 0, c + 2, '─', EYE, ORANGE)
+  put(cells, 0, c + 3, 'ʘ', EYE, ORANGE)
+  put(cells, 1, c + 2, '▀', NAVY)
+}
+const PUSH_GLASSES = P({ right: 'up' })
+const NERD_IDLE_POSES = [STAND, STAND, STAND, STAND, STAND, STAND, PUSH_GLASSES, PUSH_GLASSES, STAND, STAND, STAND, STAND]
+const NERD_TYPING_POSES = [
+  P({ left: 'down' }),
+  P({ right: 'down' }),
+  P({ left: 'down' }),
+  P({ right: 'down' }),
+  P({ left: 'down', right: 'down' }),
+  STAND,
+  P({ left: 'down' }),
+  P({ right: 'down' }),
+  P({ left: 'down' }),
+  P({ right: 'down' }),
+  PUSH_GLASSES,
+  PUSH_GLASSES,
+]
+export const NERD_IDLE: Dance = { name: 'nerd', frames: solo(NERD_IDLE_POSES), tempo: 2, dress: nerdDress(NERD_IDLE_POSES) }
+export const NERD_TYPING: Dance = { name: 'typing', frames: solo(NERD_TYPING_POSES), dress: nerdDress(NERD_TYPING_POSES) }
+
 const frames = new Map<string, string[]>()
 export function framesOf(dance: Dance): string[] {
   let encoded = frames.get(dance.name)
   if (encoded === undefined) {
-    encoded = dance.frames.map(encode)
+    encoded = dance.frames.map((frame, i) => {
+      const cells = cellsOf(frame)
+      dance.dress?.(cells, i)
+      return pack(cells)
+    })
     frames.set(dance.name, encoded)
   }
   return encoded
@@ -534,8 +616,11 @@ const DEMO_WORDS = [
 export const DEMO = [
   ...DEMO_WORDS.map(word => ({ word: `${word}…`, dance: danceFor(word) })),
   { word: 'between turns', dance: IDLE },
+  { word: '/clawd-chill', dance: CALM },
+  { word: 'light theme, working', dance: NERD_TYPING },
 ]
-const beatsOf = (dance: Dance) => dance.frames.length * Math.ceil(DEMO_MIN_BEATS / dance.frames.length)
+const loopOf = (dance: Dance) => dance.frames.length * (dance.tempo ?? 1)
+const beatsOf = (dance: Dance) => loopOf(dance) * Math.ceil(DEMO_MIN_BEATS / loopOf(dance))
 export const DEMO_MS = DEMO.reduce((sum, act) => sum + beatsOf(act.dance), 0) * TICK_MS
 
 const demoLabel = atom({ plugin: 'dancing-clawd', key: 'demoLabel' } as const, null as DemoLabel)
@@ -556,6 +641,8 @@ let secretBeat = -1 // the SPLIT frame playing, or -1
 let discoBeat = -1 // beats into the party, or -1
 let discoTurn: string | undefined // the reply the party lasts for
 let isDiscoTurnDone = false
+let isCalm = false // /clawd-chill, remembered in the store
+let isDay = false // a light theme
 
 function paint($: EngineInterface, cells: string) {
   if (cells === shown) return
@@ -565,15 +652,21 @@ function paint($: EngineInterface, cells: string) {
   $.ui.blit({ requestId: bandId, key: 'clawd', cells }).catch(() => {})
 }
 
-// Always dancing: the spinner word's dance a move a beat while Claude works,
-// the idle groove a move every other beat in between.
+// Calm when he's been told to chill, a nerd on a light theme, and otherwise
+// the spinner word's dance while Claude works and the idle groove in between.
+function currentDance(): Dance {
+  if (isCalm) return CALM
+  if (isDay) return isWorking ? NERD_TYPING : NERD_IDLE
+  return isWorking ? danceFor(spinnerWord) : IDLE
+}
+
 function tick($: EngineInterface) {
   ticks += 1
   if (demoAct >= 0) return stepDemo($)
   if (discoBeat >= 0) return stepDisco($)
   if (secretBeat >= 0) return stepSecret($)
-  if (!isWorking && ticks % 2 === 1) return
-  const next = isWorking ? danceFor(spinnerWord) : IDLE
+  const next = currentDance()
+  if (ticks % (next.tempo ?? 1) !== 0) return
   if (next.name !== dance) {
     dance = next.name
     beat = -1
@@ -596,7 +689,7 @@ function stepDemo($: EngineInterface) {
     update($, demoLabel, () => label).catch(() => {})
   }
   const moves = framesOf(act.dance)
-  paint($, moves[demoBeat % moves.length]!)
+  paint($, moves[Math.floor(demoBeat / (act.dance.tempo ?? 1)) % moves.length]!)
   demoBeat += 1
   if (demoBeat >= beatsOf(act.dance)) {
     demoAct += 1
@@ -641,7 +734,35 @@ export const register: Register = on => {
       name: 'clawd-demo',
       description: 'Watch Clawd do every dance, one after another',
     })
+    await $.command.register({
+      name: 'clawd-chill',
+      description: 'Clawd stops dancing and chills; run it again to get him dancing',
+    })
+    try {
+      isCalm = (await $.store.get('calm')) === true
+      isDay = isLightTheme((await $.config.list()).find(row => row.key === 'theme')?.value)
+    } catch {
+      // Without the store or the settings he just dances.
+    }
     return next(e)
+  })
+
+  on('command.run', { command: 'clawd-chill' }, async $ => {
+    startDancing($)
+    isCalm = !isCalm
+    await $.store.set('calm', isCalm).catch(() => {})
+    return {
+      text: isCalm
+        ? 'Clawd is chilling. Run /clawd-chill again to get him dancing.'
+        : 'Clawd is back on the dance floor.',
+    }
+  })
+
+  // Day mode follows the theme as it changes.
+  on('config.set', { key: 'theme' }, async ($, e, next) => {
+    const result = await next(e)
+    if (result.deny === undefined) isDay = isLightTheme(e.value)
+    return result
   })
 
   on('command.run', { command: 'clawd-demo' }, $ => {
@@ -657,7 +778,7 @@ export const register: Register = on => {
     isWorking = true
     turnId = e.turnId
     if (discoBeat >= 0 && discoTurn === undefined) discoTurn = e.turnId
-    else if (isSecretTurn(e.turnId) && demoAct < 0 && discoBeat < 0) secretBeat = 0
+    else if (isSecretTurn(e.turnId) && demoAct < 0 && discoBeat < 0 && !isCalm && !isDay) secretBeat = 0
     return next(e)
   })
 
