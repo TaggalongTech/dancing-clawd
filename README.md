@@ -57,7 +57,8 @@ Plays every dance back to back, then a look at `/clawd-chill` and day mode,
 each labeled with the spinner word or mode it belongs to.
 
 `/clawd-demo` and `/clawd-chill` work even while Claude is busy: they take
-effect at once, never hold Claude up, and add nothing to its conversation.
+effect at once, never hold Claude up, and answer with a pop-up rather than a
+message in the conversation.
 
 ## Working on it
 
