@@ -6,7 +6,7 @@ A tiny Claude mascot for Claude Code. He stands just above your prompt, about
 5 cells wide and 2 rows tall, drawn in the same block style as Claude Code's own
 logo, and he loves to dance:
 
-![Clawd dancing to Claude Code's spinner words, chilling, typing in day mode, and a glimpse of the party](assets/preview.svg)
+![Clawd dancing to Claude Code's spinner words, cheering at passing tests, chilling, typing in day mode, catching hearts, and a glimpse of the party](assets/preview.svg)
 
 - **While Claude works** he dances to the spinner's word. Each word gets its own
   dance: pondering words look around with a hand to the chin, cooking words stir
@@ -14,7 +14,18 @@ logo, and he loves to dance:
   strip, and every other word gets a mix of moves picked from the word itself.
 - **Only "Moonwalking…"** gets the moonwalk: he glides backwards across his strip,
   facing forward.
-- **Between turns** he grooves at half speed.
+- **He reacts to what Claude does**, in short bursts: peers around while it
+  reads, hammers while it edits, types while it runs commands, does a victory
+  dance when tests pass, facepalms when they fail, throws confetti on a git
+  commit, and takes a little bow when a reply is done. He never changes or
+  slows anything Claude does.
+- **Between turns** he hangs about: mostly still, a blink, a glance, a small
+  move now and then. After 3 quiet minutes he naps and stops animating
+  entirely; your next message wakes him with a stretch.
+- **Play with him**: hover over him for ♥ (pet him), ☕ (coffee) and ♪ (request
+  a dance). Without a mouse, `ctrl+x tab` to his strip and press 1, 2 or 3.
+- **Collect his moves**: the first time you see one, he tells you. `/clawd`
+  opens your dance card, with everything he can do. Some moves are secret.
 - **`/clawd-chill`** tells him to stop dancing and chill: eyes shut, a cigarette
   in hand, smoke curling up. Run it again to get him dancing. He remembers
   between sessions.
@@ -53,10 +64,11 @@ Answer `y` to add the marketplace, then press Enter for the user scope.
 /clawd-demo
 ```
 
-Plays every dance back to back, then a look at `/clawd-chill` and day mode,
-each labeled with the spinner word or mode it belongs to.
+Plays every dance back to back, then `/clawd-chill`, day mode, his reactions
+and his nap, each labeled with what sets it off. The demo doesn't count toward
+your dance card.
 
-`/clawd-demo` and `/clawd-chill` work even while Claude is busy: they take
+`/clawd`, `/clawd-demo` and `/clawd-chill` work even while Claude is busy: they take
 effect at once, never hold Claude up, and answer with a pop-up rather than a
 message in the conversation.
 

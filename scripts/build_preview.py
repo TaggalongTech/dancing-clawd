@@ -20,15 +20,16 @@ OUT = ROOT / 'assets' / 'preview.svg'
 # Each reel: the line under him, and the dance to play, once or more.
 PROBE_SOURCE = """
 import { test } from 'claude-code/testing'
-import { CALM, COLUMNS, danceFor, discoFrame, framesOf, IDLE, NERD_TYPING, ROWS, TICK_MS } from '../hooks/register'
+import { CALM, CHEER, COLUMNS, danceFor, discoFrame, framesOf, HEARTS, NERD_TYPING, ROWS, TICK_MS } from '../hooks/register'
 const reels = [
   ['Pondering…', danceFor('Pondering'), 1],
   ['Moonwalking…', danceFor('Moonwalking'), 1],
   ['Spinning…', danceFor('Spinning'), 1],
   ['Frolicking…', danceFor('Frolicking'), 1],
+  ['tests pass', CHEER, 2],
   ['/clawd-chill', CALM, 1],
   ['light theme', NERD_TYPING, 2],
-  ['between turns', IDLE, 1],
+  ['♥', HEARTS, 1],
 ] as const
 const party = { label: 'if you know the words…', tempo: 1, loops: 1, frames: Array.from({ length: 48 }, (_, b) => discoFrame(b)) }
 test('probe', () => {

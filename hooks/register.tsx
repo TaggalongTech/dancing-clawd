@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { DemoLabel } from '../types'
+import type { DemoLabel, SeenMoves } from '../types'
 
 // A mini Clawd, drawn the way Claude Code's own logo is: quadrant blocks, so
 // each terminal cell is 2x2 pixels. The stage is 28x4 pixels, 14 cells by 2
@@ -217,9 +217,30 @@ export function danceFor(word: string | undefined): Dance {
   }
 }
 
+// Between turns he hangs about: mostly still, a blink, a glance each way, and
+// one small move in a loop of about ten seconds.
+const still = (n: number): Pose[] => Array.from({ length: n }, () => STAND)
 export const IDLE: Dance = {
   name: 'idle',
-  frames: solo((['roof', 'swayLeft', 'swayRight', 'wave'] as Phrase[]).flatMap(p => PHRASES[p])),
+  frames: solo([
+    ...still(10),
+    P({ blink: true }),
+    ...still(6),
+    P({ look: -1 }),
+    P({ look: -1 }),
+    P({ look: -1 }),
+    ...still(2),
+    P({ look: 1 }),
+    P({ look: 1 }),
+    P({ look: 1 }),
+    ...still(5),
+    P({ blink: true }),
+    ...still(3),
+    P({ left: 'up', look: -1 }),
+    STAND,
+    P({ right: 'up', look: 1 }),
+    ...still(5),
+  ]),
   tempo: 2,
 }
 
@@ -582,6 +603,155 @@ const NERD_TYPING_POSES = [
 export const NERD_IDLE: Dance = { name: 'nerd', frames: solo(NERD_IDLE_POSES), tempo: 2, dress: nerdDress(NERD_IDLE_POSES) }
 export const NERD_TYPING: Dance = { name: 'typing', frames: solo(NERD_TYPING_POSES), dress: nerdDress(NERD_TYPING_POSES) }
 
+// By day, anything he does keeps his glasses and bow tie on.
+const dayDressed = new Map<string, Dance>()
+function byDay(dance: Dance): Dance {
+  let dressed = dayDressed.get(dance.name)
+  if (dressed === undefined) {
+    const nerd = nerdDress(dance.frames.map(frame => frame[0]!))
+    dressed = { ...dance, name: `${dance.name}+day`, dress: (cells, i) => (dance.dress?.(cells, i), nerd(cells, i)) }
+    dayDressed.set(dance.name, dressed)
+  }
+  return dressed
+}
+
+// Reactions: short bursts for what Claude is doing, and for being played with.
+const SHUT_EYES = (cells: Cell[], x: number) => {
+  put(cells, 0, (x >> 1) + 1, '▁', EYE, ORANGE)
+  put(cells, 0, (x >> 1) + 3, '▁', EYE, ORANGE)
+}
+const HAPPY_EYES = (cells: Cell[], x: number) => {
+  put(cells, 0, (x >> 1) + 1, '^', EYE, ORANGE)
+  put(cells, 0, (x >> 1) + 3, '^', EYE, ORANGE)
+}
+const GOLD = [0xffd479, 0xffffff, 0xf7e7b4]
+const CONFETTI = [0xff8fb1, 0x7fd4ff, 0xffd479, 0x9be7a6, 0xcdb8ff]
+const FREE_COLUMNS = [0, 1, 2, 3, 10, 11, 12, 13] // either side of him at HOME
+
+export const PEER: Dance = {
+  name: 'peer',
+  frames: solo([P({ look: -1 }), P({ look: -1 }), P({ look: 1 }), P({ look: 1 }), P({ look: -1 }), P({ look: 1 })]),
+  tempo: 2,
+}
+export const HAMMER_TIME: Dance = { name: 'hammer-time', frames: solo([...PHRASES.hammer, ...PHRASES.hammer]) }
+export const TAP: Dance = { name: 'tap', frames: solo(NERD_TYPING_POSES.slice(0, 8)) }
+export const BOW: Dance = {
+  name: 'bow',
+  frames: solo([P({ left: 'down', right: 'down', blink: true }), P({ left: 'down', right: 'down', blink: true }), STAND]),
+  tempo: 3,
+}
+export const STRETCH: Dance = {
+  name: 'stretch',
+  frames: solo([P({ blink: true }), P({ left: 'up', right: 'up', blink: true }), ROOF, STAND]),
+  tempo: 3,
+  dress: (cells, i) => i < 2 && SHUT_EYES(cells, HOME),
+}
+export const CHEER: Dance = {
+  name: 'cheer',
+  frames: solo([ROOF, STAND, ROOF, STAND, ROOF, ROOF, STAND, ROOF]),
+  dress: (cells, i) => {
+    HAPPY_EYES(cells, HOME)
+    const c = HOME >> 1
+    for (const [row, column, k] of [[0, c - 1, 0], [0, c + 6, 1], [1, c - 2, 2], [1, c + 7, 0]] as const) {
+      put(cells, row, column, (i + k) % 2 ? '✦' : '✧', GOLD[(i + k) % GOLD.length]!)
+    }
+  },
+}
+export const FACEPALM: Dance = {
+  name: 'facepalm',
+  frames: solo(Array.from({ length: 8 }, () => P({ left: 'up' }))),
+  tempo: 2,
+  dress: (cells, i) => {
+    SHUT_EYES(cells, HOME)
+    const c = HOME >> 1
+    const drop = ['▝', '▗', '▝', '▗'][i >> 1]!
+    put(cells, i < 4 ? 0 : 1, c + 6, drop, 0x7fc8ff)
+  },
+}
+export const CONFETTI_DANCE: Dance = {
+  name: 'confetti',
+  frames: solo([ROOF, STAND, ROOF, STAND, ROOF, STAND, ROOF, STAND, ROOF, STAND, ROOF, STAND]),
+  dress: (cells, i) => {
+    HAPPY_EYES(cells, HOME)
+    for (let k = 0; k < 6; k++) {
+      const age = i - k
+      if (age < 0 || age > 5) continue
+      const column = FREE_COLUMNS[(k * 3 + 1) % FREE_COLUMNS.length]!
+      put(cells, age < 3 ? 0 : 1, column, ['*', '•', '·'][age % 3]!, CONFETTI[k % CONFETTI.length]!)
+    }
+  },
+}
+export const HEARTS: Dance = {
+  name: 'hearts',
+  frames: solo(Array.from({ length: 10 }, (_, i) => P({ blink: false, look: i % 4 < 2 ? -1 : 1 }))),
+  tempo: 2,
+  dress: (cells, i) => {
+    HAPPY_EYES(cells, HOME)
+    const c = HOME >> 1
+    const path: [number, number][] = [[1, c + 6], [0, c + 6], [0, c + 7], [0, c + 8]]
+    for (const [start, side] of [[0, 1], [3, -1]] as const) {
+      const step = i - start
+      if (step < 0 || step >= path.length) continue
+      const [row, column] = path[step]!
+      put(cells, row, side > 0 ? column : 2 * c + 5 - column, '♥', step < 2 ? 0xff6b9a : 0xffb3c7)
+    }
+  },
+}
+export const COFFEE: Dance = {
+  name: 'coffee',
+  frames: solo([...PHRASES.shimmy, ...PHRASES.shimmy, ROOF, STAND]),
+  dress: (cells, i) => i < 4 && put(cells, 0, (HOME >> 1) + 6, '!', 0xffd479),
+}
+export const NAP: Dance = {
+  name: 'nap',
+  frames: solo([P({ blink: true })]),
+  dress: cells => {
+    SHUT_EYES(cells, HOME)
+    put(cells, 0, (HOME >> 1) + 6, 'z', 0x9fa8da)
+    put(cells, 0, (HOME >> 1) + 7, 'Z', 0xc5cae9)
+  },
+}
+
+// Bash commands that run tests, for cheering or facepalming at the outcome.
+export const isTestCommand = (command: string) =>
+  /\b(test|tests|pytest|jest|vitest|mocha|rspec|phpunit|unittest|ctest|go test|cargo test|claude plugin test|apex run test)\b/.test(command)
+export const isCommitCommand = (command: string) => /\bgit\s+commit\b/.test(command)
+const READING_TOOLS = new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'LS'])
+const EDITING_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
+
+// The dance card: every move there is to see, two of them secret.
+export const CARD: { id: string; name: string; isSecret?: true }[] = [
+  { id: 'moonwalk', name: 'Moonwalk' },
+  { id: 'wander', name: 'Stroll' },
+  { id: 'spin', name: 'Spin' },
+  { id: 'shimmy', name: 'Shimmy' },
+  { id: 'ponder', name: 'Ponder' },
+  { id: 'stir', name: 'Stir the pot' },
+  { id: 'hammer', name: 'Hammer time' },
+  { id: 'frolic', name: 'Frolic' },
+  { id: 'flail', name: 'Flail' },
+  { id: 'magic', name: 'Magic' },
+  { id: 'wave', name: 'Wave' },
+  { id: 'mix', name: 'Freestyle' },
+  { id: 'calm', name: 'Chill' },
+  { id: 'nerd', name: 'Day job' },
+  { id: 'nap', name: 'Nap' },
+  { id: 'cheer', name: 'Victory dance' },
+  { id: 'facepalm', name: 'Facepalm' },
+  { id: 'confetti', name: 'Confetti' },
+  { id: 'hearts', name: 'Hearts' },
+  { id: 'coffee', name: 'Caffeinated' },
+  { id: 'split', name: 'Twin split', isSecret: true },
+  { id: 'disco', name: 'Disco', isSecret: true },
+]
+// The card entry a dance counts toward, if any.
+export const cardIdOf = (danceName: string) => {
+  const id = danceName.split(/[:+]/)[0]!
+  const alias: Record<string, string> = { typing: 'nerd' }
+  const card = alias[id] ?? id
+  return CARD.some(entry => entry.id === card) ? card : undefined
+}
+
 const frames = new Map<string, string[]>()
 export function framesOf(dance: Dance): string[] {
   let encoded = frames.get(dance.name)
@@ -618,12 +788,24 @@ export const DEMO = [
   { word: 'between turns', dance: IDLE },
   { word: '/clawd-chill', dance: CALM },
   { word: 'light theme, working', dance: NERD_TYPING },
+  { word: 'tests pass', dance: CHEER },
+  { word: 'tests fail', dance: FACEPALM },
+  { word: 'git commit', dance: CONFETTI_DANCE },
+  { word: '♥', dance: HEARTS },
+  { word: '☕', dance: COFFEE },
+  { word: 'after 3 quiet minutes', dance: NAP },
 ]
 const loopOf = (dance: Dance) => dance.frames.length * (dance.tempo ?? 1)
 const beatsOf = (dance: Dance) => loopOf(dance) * Math.ceil(DEMO_MIN_BEATS / loopOf(dance))
 export const DEMO_MS = DEMO.reduce((sum, act) => sum + beatsOf(act.dance), 0) * TICK_MS
 
 const demoLabel = atom({ plugin: 'dancing-clawd', key: 'demoLabel' } as const, null as DemoLabel)
+const seenMoves = atom({ plugin: 'dancing-clawd', key: 'seen' } as const, [] as SeenMoves)
+const CARD_PANE = 'clawd-card'
+
+// After a few quiet minutes he falls asleep and the ticking stops.
+export const SLEEP_AFTER_TICKS = Math.round((3 * 60_000) / TICK_MS)
+const REQUESTABLE = DEMO_WORDS.filter(word => word !== 'Moonwalking') // the moonwalk stays Moonwalking's
 
 // What the band shows and why; module state starts over on each reload.
 let bandId: string | undefined
@@ -643,6 +825,11 @@ let discoTurn: string | undefined // the reply the party lasts for
 let isDiscoTurnDone = false
 let isCalm = false // /clawd-chill, remembered in the store
 let isDay = false // a light theme
+let reaction: { dance: Dance; beat: number } | undefined // a short burst playing
+let idleTicks = 0
+let isAsleep = false
+let timer: Timer | undefined
+let seen = new Set<string>() // the dance card, mirrored in the store and in `seenMoves`
 
 function paint($: EngineInterface, cells: string) {
   if (cells === shown) return
@@ -665,11 +852,15 @@ function tick($: EngineInterface) {
   if (demoAct >= 0) return stepDemo($)
   if (discoBeat >= 0) return stepDisco($)
   if (secretBeat >= 0) return stepSecret($)
+  if (reaction !== undefined) return stepReaction($)
+  idleTicks = isWorking ? 0 : idleTicks + 1
+  if (idleTicks >= SLEEP_AFTER_TICKS) return fallAsleep($)
   const next = currentDance()
   if (ticks % (next.tempo ?? 1) !== 0) return
   if (next.name !== dance) {
     dance = next.name
     beat = -1
+    markSeen($, cardIdOf(next.name))
   }
   const moves = framesOf(next)
   beat = (beat + 1) % moves.length
@@ -721,10 +912,85 @@ function stepDisco($: EngineInterface) {
   }
 }
 
+// A reaction plays once through at its own tempo, by day in glasses.
+function stepReaction($: EngineInterface) {
+  const playing = reaction!
+  const tempo = playing.dance.tempo ?? 1
+  const moves = framesOf(isDay ? byDay(playing.dance) : playing.dance)
+  if (playing.beat % tempo === 0) paint($, moves[playing.beat / tempo]!)
+  playing.beat += 1
+  if (playing.beat >= moves.length * tempo) {
+    reaction = undefined
+    dance = ''
+  }
+}
+
+// Something Claude did, or a press of his buttons. A reaction to an outcome
+// (`isOutcome`) cuts in; one to a call starting waits for any playing to end.
+function react($: EngineInterface, burst: Dance, isOutcome = false) {
+  if (!isOutcome && reaction !== undefined) return
+  reaction = { dance: burst, beat: 0 }
+  idleTicks = 0
+  startDancing($)
+  markSeen($, cardIdOf(burst.name))
+}
+
+function fallAsleep($: EngineInterface) {
+  paint($, framesOf(NAP)[0]!)
+  markSeen($, 'nap')
+  isAsleep = true
+  isTicking = false
+  timer?.cancel()
+  timer = undefined
+}
+
+// The first time a move shows, it goes on the dance card (the demo doesn't count).
+function markSeen($: EngineInterface, id: string | undefined) {
+  if (id === undefined || seen.has(id) || demoAct >= 0) return
+  const entry = CARD.find(card => card.id === id)
+  if (entry === undefined) return
+  seen.add(id)
+  const list = [...seen]
+  $.store.set('seen', list).catch(() => {})
+  update($, seenMoves, () => list).catch(() => {})
+  $.ui.toast(`New move: ${entry.name}! ${seen.size} of ${CARD.length} on your dance card (/clawd).`)
+}
+
+function noticeToolStart($: EngineInterface, tool: string) {
+  if (isCalm) return
+  if (EDITING_TOOLS.has(tool)) react($, HAMMER_TIME)
+  else if (READING_TOOLS.has(tool)) react($, PEER)
+  else if (tool === 'Bash') react($, TAP)
+}
+
+function noticeCommand($: EngineInterface, command: string, isOk: boolean) {
+  if (isCalm) return
+  if (isTestCommand(command)) react($, isOk ? CHEER : FACEPALM, true)
+  else if (isCommitCommand(command) && isOk) react($, CONFETTI_DANCE, true)
+}
+
+function pet($: EngineInterface) {
+  react($, HEARTS, true)
+}
+
+function giveCoffee($: EngineInterface) {
+  react($, COFFEE, true)
+}
+
+function requestDance($: EngineInterface) {
+  react($, danceFor(REQUESTABLE[hash(`request:${ticks}`) % REQUESTABLE.length]), true)
+}
+
+// Starts the ticking, waking him with a stretch if he's asleep.
 function startDancing($: EngineInterface) {
+  if (isAsleep) {
+    isAsleep = false
+    reaction = { dance: STRETCH, beat: 0 }
+  }
+  idleTicks = 0
   if (isTicking) return
   isTicking = true
-  $.clock.every(TICK_MS, () => tick($))
+  timer = $.clock.every(TICK_MS, () => tick($))
 }
 
 export const register: Register = on => {
@@ -742,7 +1008,16 @@ export const register: Register = on => {
       description: 'Clawd stops dancing and chills; run it again to get him dancing',
       immediate: true,
     })
+    await $.command.register({
+      name: 'clawd',
+      description: "Clawd's dance card, and everything he can do",
+      immediate: true,
+    })
     try {
+      const stored = await $.store.get('seen')
+      seen = new Set(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [])
+      const list = [...seen]
+      await update($, seenMoves, () => list)
       isCalm = (await $.store.get('calm')) === true
       isDay = isLightTheme((await $.config.list()).find(row => row.key === 'theme')?.value)
     } catch {
@@ -751,9 +1026,16 @@ export const register: Register = on => {
     return next(e)
   })
 
+  on('command.run', { command: 'clawd' }, async $ => {
+    const opened = await $.ui.open({ id: CARD_PANE, title: "Clawd's dance card", focus: true, closeOnEscape: true })
+    if (!opened.isPlaced) $.ui.toast(`${seen.size} of ${CARD.length} moves on your dance card. Widen the terminal to see it.`)
+    return {}
+  })
+
   on('command.run', { command: 'clawd-chill' }, async $ => {
     startDancing($)
     isCalm = !isCalm
+    if (isCalm) markSeen($, 'calm')
     await $.store.set('calm', isCalm).catch(() => {})
     $.ui.toast(isCalm ? 'Clawd is chilling. /clawd-chill again to get him dancing.' : 'Clawd is back on the dance floor.')
     return {}
@@ -764,7 +1046,7 @@ export const register: Register = on => {
     const result = await next(e)
     if (result.deny === undefined) isDay = isLightTheme(e.value)
     return result
-  })
+  }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'clawd-demo' }, $ => {
     startDancing($)
@@ -780,26 +1062,45 @@ export const register: Register = on => {
     isWorking = true
     turnId = e.turnId
     if (discoBeat >= 0 && discoTurn === undefined) discoTurn = e.turnId
-    else if (isSecretTurn(e.turnId) && demoAct < 0 && discoBeat < 0 && !isCalm && !isDay) secretBeat = 0
+    else if (isSecretTurn(e.turnId) && demoAct < 0 && discoBeat < 0 && !isCalm && !isDay) {
+      secretBeat = 0
+      markSeen($, 'split')
+    }
     return next(e)
   })
 
   on('turn.complete', ($, e, next) => {
-    if (e.agentId === undefined && e.turnId === turnId) isWorking = false
+    if (e.agentId === undefined && e.turnId === turnId) {
+      isWorking = false
+      if (!isCalm) react($, BOW)
+    }
     if (e.agentId === undefined && e.turnId === discoTurn) isDiscoTurnDone = true
     return next(e)
   })
 
+  // He reacts to what Claude does, never changing it: the call and its result
+  // pass through untouched.
+  on('tool.call', async ($, e, next) => {
+    noticeToolStart($, String(e.tool))
+    const result = await next(e)
+    if (e.tool === 'Bash' && result.deny === undefined) {
+      const record = result.result as { backgroundTaskId?: string } | undefined
+      if (record?.backgroundTaskId === undefined) noticeCommand($, e.command, result.isError !== true)
+    }
+    return result
+  }).catch(($, e, next) => next(e)) // a fault of his never stops a call or runs it twice
+
   // The prompt goes on to Claude unchanged; the right words also start a party.
   on('prompt.submit', async ($, e, next) => {
+    startDancing($)
     if (await hasPhrase(e.text)) {
-      startDancing($)
+      markSeen($, 'disco')
       discoBeat = 0
       discoTurn = e.turnId
       isDiscoTurnDone = false
     }
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   // The spinner's word ("Moonwalking", "Pondering") picks the dance; the
   // spinner itself is drawn as the engine draws it.
@@ -815,15 +1116,53 @@ export const register: Register = on => {
     isWorking = e.props.isWorking
     const label = await read($, demoLabel)
 
-    const { Box, Raster, Text } = $.ui.resolve(e)
-    const clawd = <Raster key="clawd" columns={COLUMNS} rows={ROWS} cells={shown} />
-    if (label === null) return <Box>{clawd}</Box>
+    const { Box, Button, Raster, Text } = $.ui.resolve(e)
+    // His toys show while the pointer is over him; where nothing hovers, always (dim).
+    const canHover = e.viewport?.isFullscreen === true
+    const reveal = canHover ? ({ display: 'none', hover: { display: 'flex' } } as const) : {}
     return (
-      <Box>
-        {clawd}
-        <Text dimColor>
-          {' ' + label}
-        </Text>
+      <Box key="clawd-band" alignItems="center">
+        <Raster key="clawd" columns={COLUMNS} rows={ROWS} cells={shown} />
+        <Box gap={1} {...reveal}>
+          <Button key="pet" plain hotkey="1" onPress={() => pet($)}>
+            <Text dimColor={!canHover}>♥</Text>
+          </Button>
+          <Button key="coffee" plain hotkey="2" onPress={() => giveCoffee($)}>
+            <Text dimColor={!canHover}>☕</Text>
+          </Button>
+          <Button key="dance" plain hotkey="3" onPress={() => requestDance($)}>
+            <Text dimColor={!canHover}>♪</Text>
+          </Button>
+        </Box>
+        {label === null ? null : <Text dimColor>{' ' + label}</Text>}
+      </Box>
+    )
+  })
+
+  // /clawd: the dance card, and how to play with him.
+  on('ui.render', { component: 'Pane', requestId: CARD_PANE }, async ($, e) => {
+    const ids = await read($, seenMoves)
+    const { Box, Text } = $.ui.resolve(e)
+    const line = (entry: (typeof CARD)[number]) =>
+      ids.includes(entry.id) ? (
+        <Text>{`✓ ${entry.name}`}</Text>
+      ) : (
+        <Text dimColor>{entry.isSecret ? '★ ???' : '· ???'}</Text>
+      )
+    const half = Math.ceil(CARD.length / 2)
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <Text bold>{`Dance card: ${ids.length} of ${CARD.length} moves`}</Text>
+        <Box gap={4} marginTop={1}>
+          <Box flexDirection="column">{CARD.slice(0, half).map(line)}</Box>
+          <Box flexDirection="column">{CARD.slice(half).map(line)}</Box>
+        </Box>
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>Hover over Clawd for ♥ ☕ ♪, or ctrl+x tab to his strip and press 1 2 3.</Text>
+          <Text dimColor>/clawd-chill  he chills, or dances again</Text>
+          <Text dimColor>/clawd-demo   every move in a row</Text>
+          <Text dimColor>★ moves are secret. Esc closes this.</Text>
+        </Box>
       </Box>
     )
   })
