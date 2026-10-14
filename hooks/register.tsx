@@ -693,6 +693,15 @@ export const NAP: Dance = {
 export const isTestCommand = (command: string) =>
   /\b(test|tests|pytest|jest|vitest|mocha|rspec|phpunit|unittest|ctest|go test|cargo test|claude plugin test|apex run test)\b/.test(command)
 export const isCommitCommand = (command: string) => /\bgit\s+commit\b/.test(command)
+
+// Whether a test run passed, read from what it printed: Claude chains commands
+// (`tests 2>&1; ls`), so the exit status alone often says nothing about the
+// tests. Only when the output names no result does the exit status decide.
+export function testsPassed(output: string, isOk: boolean): boolean {
+  if (/\bFAIL(ED)?\b|\b[1-9]\d* (failed|failing)\b|failures=[1-9]|errors=[1-9]|\bERROR\b|✗|✕/.test(output)) return false
+  if (/\bOK\b|\b[1-9]\d* passed\b|\bPASS(ED)?\b|\b[1-9]\d* passing\b|✓/.test(output)) return true
+  return isOk
+}
 const READING_TOOLS = new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'LS'])
 const EDITING_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
 
@@ -958,10 +967,14 @@ function noticeToolStart($: EngineInterface, tool: string) {
   else if (tool === 'Bash') react($, TAP)
 }
 
-function noticeCommand($: EngineInterface, command: string, isOk: boolean) {
+// Tests that pass get a victory dance, or confetti when the same command
+// commits too; tests that fail get a facepalm.
+function noticeCommand($: EngineInterface, command: string, output: string, isOk: boolean) {
   if (isCalm) return
-  if (isTestCommand(command)) react($, isOk ? CHEER : FACEPALM, true)
-  else if (isCommitCommand(command) && isOk) react($, CONFETTI_DANCE, true)
+  if (isTestCommand(command)) {
+    const passed = testsPassed(output, isOk)
+    react($, !passed ? FACEPALM : isCommitCommand(command) ? CONFETTI_DANCE : CHEER, true)
+  } else if (isCommitCommand(command) && isOk) react($, CONFETTI_DANCE, true)
 }
 
 function pet($: EngineInterface) {
@@ -1072,7 +1085,7 @@ export const register: Register = on => {
     const result = await next(e)
     if (e.tool === 'Bash' && result.deny === undefined) {
       const record = result.result as { backgroundTaskId?: string } | undefined
-      if (record?.backgroundTaskId === undefined) noticeCommand($, e.command, result.isError !== true)
+      if (record?.backgroundTaskId === undefined) noticeCommand($, e.command, result.text ?? '', result.isError !== true)
     }
     return result
   }).catch(($, e, next) => next(e)) // a fault of his never stops a call or runs it twice

@@ -25,6 +25,7 @@ import {
   SLEEP_AFTER_TICKS,
   SPLIT,
   STRETCH,
+  testsPassed,
   TICK_MS,
   travelling,
   travelOffset,
@@ -88,9 +89,14 @@ function engine(on: On, stored: Record<string, unknown> = {}): string[] {
   })
   mock.store(on, stored)
   on('ui.open', () => ({ value: { isPlaced: true } }))
+  // A command naming "fail" fails its tests; "; ls" after it still exits 0,
+  // as a chained command does.
   on('tool.call', ($, e) => {
-    const isFail = e.tool === 'Bash' && e.command.includes('fail')
-    return (isFail ? { result: {}, text: 'failed', isError: true } : { result: {}, text: 'ok' }) as never
+    if (e.tool !== 'Bash') return { result: {}, text: '' } as never
+    const failed = e.command.includes('fail')
+    const output = failed ? 'F.\nFAILED (failures=1)' : '..\nOK'
+    const exitsNonZero = failed && !e.command.includes('; ls')
+    return (exitsNonZero ? { result: {}, text: output, isError: true } : { result: {}, text: output }) as never
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
@@ -374,10 +380,35 @@ test('he reacts to Claude: hammers on edits, cheers or facepalms at tests, confe
   for (const cells of blits) expect(anywhere(FACEPALM)).toContain(cells)
   await settle()
 
+  // Failing tests chained before a command that succeeds still get a facepalm.
+  await $.tool.call({ tool: 'Bash', command: 'python3 -m unittest --fail 2>&1; ls' })
+  await clock.advance(TICK_MS * 4)
+  expect(blits.length).toBeGreaterThan(0)
+  for (const cells of blits) expect(anywhere(FACEPALM)).toContain(cells)
+  await settle()
+
   await $.tool.call({ tool: 'Bash', command: 'git commit -m "dance"' })
   await clock.advance(TICK_MS * 4)
   expect(blits.length).toBeGreaterThan(0)
   for (const cells of blits) expect(anywhere(CONFETTI_DANCE)).toContain(cells)
+  await settle()
+
+  // Passing tests and a commit in one command: confetti.
+  await $.tool.call({ tool: 'Bash', command: 'python3 -m unittest && git commit -qm "fix"' })
+  await clock.advance(TICK_MS * 4)
+  expect(blits.length).toBeGreaterThan(0)
+  for (const cells of blits) expect(anywhere(CONFETTI_DANCE)).toContain(cells)
+})
+
+test('a test run passes or fails by what it printed, not by how the command exited', () => {
+  expect(testsPassed('F.\nFAILED (failures=1)\ncalc.py', true)).toBe(false) // unittest, then ; ls
+  expect(testsPassed('..\nRan 2 tests in 0.000s\n\nOK', true)).toBe(true)
+  expect(testsPassed('===== 1 failed, 3 passed in 0.12s =====', true)).toBe(false) // pytest
+  expect(testsPassed('===== 4 passed in 0.10s =====', false)).toBe(true)
+  expect(testsPassed('Tests:       1 failed, 9 passed, 10 total', true)).toBe(false) // jest
+  expect(testsPassed('  12 passing (40ms)', false)).toBe(true) // mocha
+  expect(testsPassed('', true)).toBe(true)
+  expect(testsPassed('', false)).toBe(false)
 })
 
 test('his toys show on hover and set him off, and new moves go on the dance card', async ($, on) => {
