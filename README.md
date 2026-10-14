@@ -6,7 +6,7 @@ A tiny Claude mascot for Claude Code. He stands just above your prompt, about
 5 cells wide and 2 rows tall, drawn in the same block style as Claude Code's own
 logo, and he loves to dance:
 
-![Clawd dancing to Claude Code's spinner words, chilling, and typing in day mode](assets/preview.svg)
+![Clawd dancing to Claude Code's spinner words, chilling, typing in day mode, and a glimpse of the party](assets/preview.svg)
 
 - **While Claude works** he dances to the spinner's word. Each word gets its own
   dance: pondering words look around with a hand to the chin, cooking words stir
@@ -21,6 +21,7 @@ logo, and he loves to dance:
 - **On a light theme** he won't dance. Clawd only dances in the dark; by day
   he's a nerd in glasses and a bow tie who types away while Claude works.
 - **Now and then** he does something else entirely. Keep an eye on him.
+- **The right words** in a prompt start a party. We're not saying which. 🪩
 
 ## Requirements
 
@@ -54,6 +55,9 @@ Answer `y` to add the marketplace, then press Enter for the user scope.
 
 Plays every dance back to back, then a look at `/clawd-chill` and day mode,
 each labeled with the spinner word or mode it belongs to.
+
+`/clawd-demo` and `/clawd-chill` work even while Claude is busy: they take
+effect at once, never hold Claude up, and add nothing to its conversation.
 
 ## Working on it
 

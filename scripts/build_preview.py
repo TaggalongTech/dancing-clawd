@@ -3,7 +3,7 @@
 
 The frames come from the mod itself: a throwaway test prints them through
 `claude plugin test`, so the picture always matches what the terminal draws.
-The easter eggs stay out of it.
+It ends on a teaser of the disco; the words that start it stay secret.
 
     python3 scripts/build_preview.py
 """
@@ -20,7 +20,7 @@ OUT = ROOT / 'assets' / 'preview.svg'
 # Each reel: the line under him, and the dance to play, once or more.
 PROBE_SOURCE = """
 import { test } from 'claude-code/testing'
-import { CALM, COLUMNS, danceFor, framesOf, IDLE, NERD_TYPING, ROWS, TICK_MS } from '../hooks/register'
+import { CALM, COLUMNS, danceFor, discoFrame, framesOf, IDLE, NERD_TYPING, ROWS, TICK_MS } from '../hooks/register'
 const reels = [
   ['Pondering…', danceFor('Pondering'), 1],
   ['Moonwalking…', danceFor('Moonwalking'), 1],
@@ -30,10 +30,11 @@ const reels = [
   ['light theme', NERD_TYPING, 2],
   ['between turns', IDLE, 1],
 ] as const
+const party = { label: 'if you know the words…', tempo: 1, loops: 1, frames: Array.from({ length: 48 }, (_, b) => discoFrame(b)) }
 test('probe', () => {
   console.log('PREVIEW=' + JSON.stringify({
     COLUMNS, ROWS, TICK_MS,
-    reels: reels.map(([label, dance, loops]) => ({ label, tempo: dance.tempo ?? 1, loops, frames: framesOf(dance) })),
+    reels: [...reels.map(([label, dance, loops]) => ({ label, tempo: dance.tempo ?? 1, loops, frames: framesOf(dance) })), party],
   }))
 })
 """

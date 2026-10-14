@@ -730,13 +730,17 @@ function startDancing($: EngineInterface) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     if (e.isInteractive) startDancing($)
+    // Both run at once, even mid-reply, and answer with a toast: Clawd never
+    // holds Claude up or puts words in its conversation.
     await $.command.register({
       name: 'clawd-demo',
       description: 'Watch Clawd do every dance, one after another',
+      immediate: true,
     })
     await $.command.register({
       name: 'clawd-chill',
       description: 'Clawd stops dancing and chills; run it again to get him dancing',
+      immediate: true,
     })
     try {
       isCalm = (await $.store.get('calm')) === true
@@ -751,11 +755,8 @@ export const register: Register = on => {
     startDancing($)
     isCalm = !isCalm
     await $.store.set('calm', isCalm).catch(() => {})
-    return {
-      text: isCalm
-        ? 'Clawd is chilling. Run /clawd-chill again to get him dancing.'
-        : 'Clawd is back on the dance floor.',
-    }
+    $.ui.toast(isCalm ? 'Clawd is chilling. /clawd-chill again to get him dancing.' : 'Clawd is back on the dance floor.')
+    return {}
   })
 
   // Day mode follows the theme as it changes.
@@ -770,7 +771,8 @@ export const register: Register = on => {
     demoAct = 0
     demoBeat = 0
     const seconds = Math.round(DEMO_MS / 1000)
-    return { text: `Clawd is doing all ${DEMO.length} dances in a row (about ${seconds}s). Watch above the prompt.` }
+    $.ui.toast(`Clawd is doing all ${DEMO.length} dances in a row, about ${seconds}s. Watch above the prompt.`)
+    return {}
   })
 
   on('turn.start', ($, e, next) => {

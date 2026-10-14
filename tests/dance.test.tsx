@@ -61,10 +61,18 @@ const WORDS = [
 
 const COMMAND = { args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } } as const
 
+// Toasts the mod raised, in order.
+let toasts: string[] = []
+
 // Stands in for the engine beneath the mod, its theme setting as given and its
 // store in memory; returns the cells each blit painted.
 function engine(on: On, theme = 'dark', stored: Record<string, unknown> = {}): string[] {
   const blits: string[] = []
+  toasts = []
+  on('ui.toast', ($, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
   mock.store(on, stored)
   const row: ConfigRow = {
     key: 'theme',
@@ -145,13 +153,9 @@ test('/clawd-demo plays every dance in a row, then goes back to grooving', async
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(BAND)
-  const ran = await $.command.run({
-    command: 'clawd-demo',
-    args: '',
-    origin: { kind: 'composer' },
-    presentation: { isFullscreen: false, columns: 80 },
-  })
-  expect(ran.text).toContain(`all ${DEMO.length} dances`)
+  const ran = await $.command.run({ command: 'clawd-demo', ...COMMAND })
+  expect(ran.text).toBeUndefined()
+  expect(toasts.at(-1)).toContain(`all ${DEMO.length} dances`)
 
   await clock.advance(TICK_MS)
   expect(await ui.find({ type: 'Text', text: `Moonwalking…  moonwalk  1/${DEMO.length}` })).toBeDefined()
@@ -269,7 +273,8 @@ test('/clawd-chill sets him chilling with a cigarette, and toggles back', async 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.ui.mount(BAND)
   const chill = await $.command.run({ command: 'clawd-chill', ...COMMAND })
-  expect(chill.text).toContain('chilling')
+  expect(chill.text).toBeUndefined()
+  expect(toasts.at(-1)).toContain('chilling')
 
   await clock.advance(TICK_MS * 30)
   expect(blits).toHaveLength(10)
@@ -277,8 +282,8 @@ test('/clawd-chill sets him chilling with a cigarette, and toggles back', async 
   // Drawn mid-chill, the band validates: cigarette and smoke included.
   expect(await (await $.ui.mount(BAND)).find({ key: 'clawd' })).toBeDefined()
 
-  const dance = await $.command.run({ command: 'clawd-chill', ...COMMAND })
-  expect(dance.text).toContain('dance floor')
+  await $.command.run({ command: 'clawd-chill', ...COMMAND })
+  expect(toasts.at(-1)).toContain('dance floor')
   blits.length = 0
   await clock.advance(TICK_MS * 8)
   for (const cells of blits) expect(framesOf(IDLE)).toContain(cells)
