@@ -1,4 +1,6 @@
 import type { ConfigRow, On } from 'claude-code'
+
+import type { Dance } from '../hooks/register'
 import { expect, mock, test } from 'claude-code/testing'
 
 import {
@@ -26,6 +28,8 @@ import {
   SPLIT,
   STRETCH,
   TICK_MS,
+  travelling,
+  travelOffset,
   wordsOf,
 } from '../hooks/register'
 
@@ -232,7 +236,14 @@ function cellsOf(cells: string): [number, number, number][] {
 }
 
 test('no frame of any dance draws ▛, which terminals split with a hairline', () => {
-  const dances = [IDLE, SPLIT, CALM, NERD_IDLE, NERD_TYPING, BOW, STRETCH, NAP, ...WORDS.map(danceFor), ...DEMO.map(act => act.dance)]
+  const offsets = [-6, -4, -2, 2, 4, 6]
+  const dances = [
+    IDLE, SPLIT, CALM, NERD_IDLE, NERD_TYPING, BOW, STRETCH, NAP,
+    ...WORDS.map(danceFor),
+    ...WORDS.flatMap(word => offsets.map(dx => travelling(danceFor(word), dx))),
+    ...[BOW, CHEER, FACEPALM, CONFETTI_DANCE, HEARTS, COFFEE, HAMMER_TIME].flatMap(d => offsets.map(dx => travelling(d, dx))),
+    ...DEMO.map(act => act.dance),
+  ]
   for (const dance of dances) {
     for (const frame of framesOf(dance)) {
       const seamy = cellsOf(frame).filter(([glyph]) => glyph === 0x259b)
@@ -371,6 +382,9 @@ test('after a few quiet minutes he naps and stops ticking, and a prompt wakes hi
   for (const cells of blits) expect(framesOf(STRETCH)).toContain(cells)
 })
 
+// A dance's frames wherever he has travelled to.
+const anywhere = (dance: Dance) => [-6, -4, -2, 0, 2, 4, 6].flatMap(dx => framesOf(travelling(dance, dx)))
+
 test('he reacts to Claude: hammers on edits, cheers or facepalms at tests, confetti on a commit', async ($, on) => {
   const clock = mock.clock(on)
   const blits = engine(on)
@@ -387,25 +401,25 @@ test('he reacts to Claude: hammers on edits, cheers or facepalms at tests, confe
   await $.tool.call({ tool: 'Edit', file_path: '/a.ts', old_string: 'a', new_string: 'b' })
   await clock.advance(TICK_MS * 4)
   expect(blits.length).toBeGreaterThan(0)
-  for (const cells of blits) expect(framesOf(HAMMER_TIME)).toContain(cells)
+  for (const cells of blits) expect(anywhere(HAMMER_TIME)).toContain(cells)
   await settle()
 
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
   await clock.advance(TICK_MS * 4)
   expect(blits.length).toBeGreaterThan(0)
-  for (const cells of blits) expect(framesOf(CHEER)).toContain(cells)
+  for (const cells of blits) expect(anywhere(CHEER)).toContain(cells)
   await settle()
 
   await $.tool.call({ tool: 'Bash', command: 'npm test -- --fail' })
   await clock.advance(TICK_MS * 4)
   expect(blits.length).toBeGreaterThan(0)
-  for (const cells of blits) expect(framesOf(FACEPALM)).toContain(cells)
+  for (const cells of blits) expect(anywhere(FACEPALM)).toContain(cells)
   await settle()
 
   await $.tool.call({ tool: 'Bash', command: 'git commit -m "dance"' })
   await clock.advance(TICK_MS * 4)
   expect(blits.length).toBeGreaterThan(0)
-  for (const cells of blits) expect(framesOf(CONFETTI_DANCE)).toContain(cells)
+  for (const cells of blits) expect(anywhere(CONFETTI_DANCE)).toContain(cells)
 })
 
 test('his toys show on hover and set him off, and new moves go on the dance card', async ($, on) => {
@@ -452,4 +466,23 @@ test('/clawd opens the dance card, secrets hidden until seen', async ($, on) => 
   expect(await card.find({ type: 'Text', text: `Dance card: 2 of ${CARD.length} moves` })).toBeDefined()
   expect(await card.find({ type: 'Text', text: '✓ Moonwalk' })).toBeDefined()
   expect((await card.findAll({ type: 'Text', text: '★ ???' })).length).toBe(2)
+})
+
+test('while Claude works his dance travels across the strip and back, on even pixels', async ($, on) => {
+  const clock = mock.clock(on)
+  const blits = engine(on)
+  const offsets = Array.from(new Set(Array.from({ length: 96 }, (_, t) => travelOffset(t))))
+  expect(offsets.sort((a, b) => a - b)).toEqual([-6, -4, -2, 0, 2, 4, 6])
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.ui.mount(BAND)
+  await $.turn.start({ text: 'hi', turnId: NORMAL_ID })
+  await $.ui.mount(spinner('Pondering'))
+  await clock.advance(TICK_MS * 60)
+
+  const ponder = danceFor('Pondering')
+  const placed = (cells: string) => offsets.find(dx => framesOf(travelling(ponder, dx)).includes(cells))
+  const seenOffsets = new Set(blits.map(placed))
+  expect(seenOffsets.has(undefined)).toBe(false)
+  expect(seenOffsets.size).toBeGreaterThan(4)
 })

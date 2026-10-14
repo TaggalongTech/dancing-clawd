@@ -8,8 +8,8 @@ logo, and he loves to dance:
 
 ![Clawd dancing to Claude Code's spinner words, cheering at passing tests, chilling, typing in day mode, catching hearts, and a glimpse of the party](assets/preview.svg)
 
-- **While Claude works** he dances to the spinner's word. Each word gets its own
-  dance: pondering words look around with a hand to the chin, cooking words stir
+- **While Claude works** he dances to the spinner's word, travelling back and
+  forth across his strip as he goes. Each word gets its own dance: pondering words look around with a hand to the chin, cooking words stir
   the pot, spinning words spin, frolicking words skip, wandering words walk the
   strip, and every other word gets a mix of moves picked from the word itself.
 - **Only "Moonwalking…"** gets the moonwalk: he glides backwards across his strip,

@@ -199,8 +199,14 @@ function mix(word: string, count: number, skip: Phrase[] = []): Phrase[] {
 // A frame is everyone on stage at one beat: Clawd, or Clawd and his twin.
 type Frame = Pose[]
 // `tempo` is beats per frame (1 when absent); `dress` adds what poses can't
-// draw, such as glasses, a cigarette or smoke, to a frame's cells.
-export type Dance = { name: string; frames: Frame[]; tempo?: number; dress?: (cells: Cell[], frame: number) => void }
+// draw, such as glasses, a cigarette or smoke, to a frame's cells, placed
+// from `x`, where Clawd stands in that frame.
+export type Dance = {
+  name: string
+  frames: Frame[]
+  tempo?: number
+  dress?: (cells: Cell[], frame: number, x: number) => void
+}
 const solo = (poses: Pose[]): Frame[] => poses.map(pose => [pose])
 
 export function danceFor(word: string | undefined): Dance {
@@ -550,8 +556,8 @@ export const CALM: Dance = {
   name: 'calm',
   frames: solo(Array.from({ length: CALM_FRAMES }, (_, i) => P({ blink: i < 14 || i >= 18, look: 1 }))),
   tempo: 3,
-  dress: (cells, i) => {
-    const c = HOME >> 1
+  dress: (cells, i, x) => {
+    const c = x >> 1
     const tip = c + 7
     const isDrag = i % 12 < 2
     // Shut eyes as two relaxed lines.
@@ -577,8 +583,8 @@ export const CALM: Dance = {
 // pushing his glasses up now and then.
 const NAVY = 0x1f3a68
 export const isLightTheme = (theme: unknown) => typeof theme === 'string' && theme.startsWith('light')
-const nerdDress = (poses: Pose[]) => (cells: Cell[], i: number) => {
-  const c = poses[i]!.x >> 1
+const nerdDress = (cells: Cell[], _frame: number, x: number) => {
+  const c = x >> 1
   put(cells, 0, c + 1, 'ʘ', EYE, ORANGE)
   put(cells, 0, c + 2, '─', EYE, ORANGE)
   put(cells, 0, c + 3, 'ʘ', EYE, ORANGE)
@@ -600,16 +606,15 @@ const NERD_TYPING_POSES = [
   PUSH_GLASSES,
   PUSH_GLASSES,
 ]
-export const NERD_IDLE: Dance = { name: 'nerd', frames: solo(NERD_IDLE_POSES), tempo: 2, dress: nerdDress(NERD_IDLE_POSES) }
-export const NERD_TYPING: Dance = { name: 'typing', frames: solo(NERD_TYPING_POSES), dress: nerdDress(NERD_TYPING_POSES) }
+export const NERD_IDLE: Dance = { name: 'nerd', frames: solo(NERD_IDLE_POSES), tempo: 2, dress: nerdDress }
+export const NERD_TYPING: Dance = { name: 'typing', frames: solo(NERD_TYPING_POSES), dress: nerdDress }
 
 // By day, anything he does keeps his glasses and bow tie on.
 const dayDressed = new Map<string, Dance>()
 function byDay(dance: Dance): Dance {
   let dressed = dayDressed.get(dance.name)
   if (dressed === undefined) {
-    const nerd = nerdDress(dance.frames.map(frame => frame[0]!))
-    dressed = { ...dance, name: `${dance.name}+day`, dress: (cells, i) => (dance.dress?.(cells, i), nerd(cells, i)) }
+    dressed = { ...dance, name: `${dance.name}+day`, dress: (cells, i, x) => (dance.dress?.(cells, i, x), nerdDress(cells, i, x)) }
     dayDressed.set(dance.name, dressed)
   }
   return dressed
@@ -626,7 +631,8 @@ const HAPPY_EYES = (cells: Cell[], x: number) => {
 }
 const GOLD = [0xffd479, 0xffffff, 0xf7e7b4]
 const CONFETTI = [0xff8fb1, 0x7fd4ff, 0xffd479, 0x9be7a6, 0xcdb8ff]
-const FREE_COLUMNS = [0, 1, 2, 3, 10, 11, 12, 13] // either side of him at HOME
+// The columns either side of him, standing at x.
+const freeColumns = (x: number) => Array.from({ length: COLUMNS }, (_, c) => c).filter(c => c < x >> 1 || c > (x >> 1) + 5)
 
 export const PEER: Dance = {
   name: 'peer',
@@ -644,14 +650,14 @@ export const STRETCH: Dance = {
   name: 'stretch',
   frames: solo([P({ blink: true }), P({ left: 'up', right: 'up', blink: true }), ROOF, STAND]),
   tempo: 3,
-  dress: (cells, i) => i < 2 && SHUT_EYES(cells, HOME),
+  dress: (cells, i, x) => i < 2 && SHUT_EYES(cells, x),
 }
 export const CHEER: Dance = {
   name: 'cheer',
   frames: solo([ROOF, STAND, ROOF, STAND, ROOF, ROOF, STAND, ROOF]),
-  dress: (cells, i) => {
-    HAPPY_EYES(cells, HOME)
-    const c = HOME >> 1
+  dress: (cells, i, x) => {
+    HAPPY_EYES(cells, x)
+    const c = x >> 1
     for (const [row, column, k] of [[0, c - 1, 0], [0, c + 6, 1], [1, c - 2, 2], [1, c + 7, 0]] as const) {
       put(cells, row, column, (i + k) % 2 ? '✦' : '✧', GOLD[(i + k) % GOLD.length]!)
     }
@@ -661,9 +667,9 @@ export const FACEPALM: Dance = {
   name: 'facepalm',
   frames: solo(Array.from({ length: 8 }, () => P({ left: 'up' }))),
   tempo: 2,
-  dress: (cells, i) => {
-    SHUT_EYES(cells, HOME)
-    const c = HOME >> 1
+  dress: (cells, i, x) => {
+    SHUT_EYES(cells, x)
+    const c = x >> 1
     const drop = ['▝', '▗', '▝', '▗'][i >> 1]!
     put(cells, i < 4 ? 0 : 1, c + 6, drop, 0x7fc8ff)
   },
@@ -671,12 +677,13 @@ export const FACEPALM: Dance = {
 export const CONFETTI_DANCE: Dance = {
   name: 'confetti',
   frames: solo([ROOF, STAND, ROOF, STAND, ROOF, STAND, ROOF, STAND, ROOF, STAND, ROOF, STAND]),
-  dress: (cells, i) => {
-    HAPPY_EYES(cells, HOME)
+  dress: (cells, i, x) => {
+    HAPPY_EYES(cells, x)
+    const free = freeColumns(x)
     for (let k = 0; k < 6; k++) {
       const age = i - k
       if (age < 0 || age > 5) continue
-      const column = FREE_COLUMNS[(k * 3 + 1) % FREE_COLUMNS.length]!
+      const column = free[(k * 3 + 1) % free.length]!
       put(cells, age < 3 ? 0 : 1, column, ['*', '•', '·'][age % 3]!, CONFETTI[k % CONFETTI.length]!)
     }
   },
@@ -685,9 +692,9 @@ export const HEARTS: Dance = {
   name: 'hearts',
   frames: solo(Array.from({ length: 10 }, (_, i) => P({ blink: false, look: i % 4 < 2 ? -1 : 1 }))),
   tempo: 2,
-  dress: (cells, i) => {
-    HAPPY_EYES(cells, HOME)
-    const c = HOME >> 1
+  dress: (cells, i, x) => {
+    HAPPY_EYES(cells, x)
+    const c = x >> 1
     const path: [number, number][] = [[1, c + 6], [0, c + 6], [0, c + 7], [0, c + 8]]
     for (const [start, side] of [[0, 1], [3, -1]] as const) {
       const step = i - start
@@ -700,15 +707,15 @@ export const HEARTS: Dance = {
 export const COFFEE: Dance = {
   name: 'coffee',
   frames: solo([...PHRASES.shimmy, ...PHRASES.shimmy, ROOF, STAND]),
-  dress: (cells, i) => i < 4 && put(cells, 0, (HOME >> 1) + 6, '!', 0xffd479),
+  dress: (cells, i, x) => i < 4 && put(cells, 0, (x >> 1) + 6, '!', 0xffd479),
 }
 export const NAP: Dance = {
   name: 'nap',
   frames: solo([P({ blink: true })]),
-  dress: cells => {
-    SHUT_EYES(cells, HOME)
-    put(cells, 0, (HOME >> 1) + 6, 'z', 0x9fa8da)
-    put(cells, 0, (HOME >> 1) + 7, 'Z', 0xc5cae9)
+  dress: (cells, _i, x) => {
+    SHUT_EYES(cells, x)
+    put(cells, 0, (x >> 1) + 6, 'z', 0x9fa8da)
+    put(cells, 0, (x >> 1) + 7, 'Z', 0xc5cae9)
   },
 }
 
@@ -758,7 +765,7 @@ export function framesOf(dance: Dance): string[] {
   if (encoded === undefined) {
     encoded = dance.frames.map((frame, i) => {
       const cells = cellsOf(frame)
-      dance.dress?.(cells, i)
+      dance.dress?.(cells, i, frame[0]?.x ?? HOME)
       return pack(cells)
     })
     frames.set(dance.name, encoded)
@@ -839,6 +846,30 @@ function paint($: EngineInterface, cells: string) {
   $.ui.blit({ requestId: bandId, key: 'clawd', cells }).catch(() => {})
 }
 
+// While Claude works his dances travel: the whole dance drifts across the
+// strip and back, a cell (two pixels, so still on even pixels) every
+// TRAVEL_EVERY beats, up to TRAVEL_REACH pixels either side of home.
+const TRAVEL_EVERY = 4
+const TRAVEL_REACH = 6
+export const travelOffset = (tick: number) => {
+  const steps = TRAVEL_REACH // one way, in cells
+  const k = Math.floor(tick / TRAVEL_EVERY) % (2 * steps)
+  return (k <= steps ? k : 2 * steps - k) * 2 - TRAVEL_REACH
+}
+const travelled = new Map<string, Dance>()
+export function travelling(dance: Dance, dx: number): Dance {
+  if (dx === 0) return dance
+  const key = `${dance.name}@${dx}`
+  let moved = travelled.get(key)
+  if (moved === undefined) {
+    moved = { ...dance, name: key, frames: dance.frames.map(frame => frame.map(pose => ({ ...pose, x: pose.x + dx }))) }
+    travelled.set(key, moved)
+  }
+  return moved
+}
+// The moonwalk and the stroll have paths of their own.
+const travels = (dance: Dance) => isWorking && !isCalm && !isDay && dance.name !== 'moonwalk' && dance.name !== 'wander'
+
 // Calm when he's been told to chill, a nerd on a light theme, and otherwise
 // the spinner word's dance while Claude works and the idle groove in between.
 function currentDance(): Dance {
@@ -862,7 +893,7 @@ function tick($: EngineInterface) {
     beat = -1
     markSeen($, cardIdOf(next.name))
   }
-  const moves = framesOf(next)
+  const moves = framesOf(travels(next) ? travelling(next, travelOffset(ticks)) : next)
   beat = (beat + 1) % moves.length
   paint($, moves[beat]!)
 }
@@ -916,7 +947,8 @@ function stepDisco($: EngineInterface) {
 function stepReaction($: EngineInterface) {
   const playing = reaction!
   const tempo = playing.dance.tempo ?? 1
-  const moves = framesOf(isDay ? byDay(playing.dance) : playing.dance)
+  const dressed = isDay ? byDay(playing.dance) : playing.dance
+  const moves = framesOf(isWorking && !isCalm && !isDay ? travelling(dressed, travelOffset(ticks)) : dressed)
   if (playing.beat % tempo === 0) paint($, moves[playing.beat / tempo]!)
   playing.beat += 1
   if (playing.beat >= moves.length * tempo) {
