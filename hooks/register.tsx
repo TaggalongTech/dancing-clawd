@@ -199,7 +199,7 @@ function mix(word: string, count: number, skip: Phrase[] = []): Phrase[] {
 // A frame is everyone on stage at one beat: Clawd, or Clawd and his twin.
 type Frame = Pose[]
 // `tempo` is beats per frame (1 when absent); `dress` adds what poses can't
-// draw, such as glasses, a cigarette or smoke, to a frame's cells, placed
+// draw, such as eyes, sparkles, a cigarette or smoke, to a frame's cells, placed
 // from `x`, where Clawd stands in that frame.
 export type Dance = {
   name: string
@@ -578,21 +578,8 @@ export const CALM: Dance = {
   },
 }
 
-// Day mode, on a light theme: Clawd only dances in the dark. By day he's a
-// nerd in ʘ─ʘ glasses and a navy bow tie, typing away while Claude works and
-// pushing his glasses up now and then.
-const NAVY = 0x1f3a68
-export const isLightTheme = (theme: unknown) => typeof theme === 'string' && theme.startsWith('light')
-const nerdDress = (cells: Cell[], _frame: number, x: number) => {
-  const c = x >> 1
-  put(cells, 0, c + 1, 'ʘ', EYE, ORANGE)
-  put(cells, 0, c + 2, '─', EYE, ORANGE)
-  put(cells, 0, c + 3, 'ʘ', EYE, ORANGE)
-  put(cells, 1, c + 2, '▀', NAVY)
-}
-const PUSH_GLASSES = P({ right: 'up' })
-const NERD_IDLE_POSES = [STAND, STAND, STAND, STAND, STAND, STAND, PUSH_GLASSES, PUSH_GLASSES, STAND, STAND, STAND, STAND]
-const NERD_TYPING_POSES = [
+// Typing, for when Claude runs a command.
+const TYPING_POSES = [
   P({ left: 'down' }),
   P({ right: 'down' }),
   P({ left: 'down' }),
@@ -601,24 +588,7 @@ const NERD_TYPING_POSES = [
   STAND,
   P({ left: 'down' }),
   P({ right: 'down' }),
-  P({ left: 'down' }),
-  P({ right: 'down' }),
-  PUSH_GLASSES,
-  PUSH_GLASSES,
 ]
-export const NERD_IDLE: Dance = { name: 'nerd', frames: solo(NERD_IDLE_POSES), tempo: 2, dress: nerdDress }
-export const NERD_TYPING: Dance = { name: 'typing', frames: solo(NERD_TYPING_POSES), dress: nerdDress }
-
-// By day, anything he does keeps his glasses and bow tie on.
-const dayDressed = new Map<string, Dance>()
-function byDay(dance: Dance): Dance {
-  let dressed = dayDressed.get(dance.name)
-  if (dressed === undefined) {
-    dressed = { ...dance, name: `${dance.name}+day`, dress: (cells, i, x) => (dance.dress?.(cells, i, x), nerdDress(cells, i, x)) }
-    dayDressed.set(dance.name, dressed)
-  }
-  return dressed
-}
 
 // Reactions: short bursts for what Claude is doing, and for being played with.
 const SHUT_EYES = (cells: Cell[], x: number) => {
@@ -640,7 +610,7 @@ export const PEER: Dance = {
   tempo: 2,
 }
 export const HAMMER_TIME: Dance = { name: 'hammer-time', frames: solo([...PHRASES.hammer, ...PHRASES.hammer]) }
-export const TAP: Dance = { name: 'tap', frames: solo(NERD_TYPING_POSES.slice(0, 8)) }
+export const TAP: Dance = { name: 'tap', frames: solo(TYPING_POSES) }
 export const BOW: Dance = {
   name: 'bow',
   frames: solo([P({ left: 'down', right: 'down', blink: true }), P({ left: 'down', right: 'down', blink: true }), STAND]),
@@ -741,7 +711,6 @@ export const CARD: { id: string; name: string; isSecret?: true }[] = [
   { id: 'wave', name: 'Wave' },
   { id: 'mix', name: 'Freestyle' },
   { id: 'calm', name: 'Chill' },
-  { id: 'nerd', name: 'Day job' },
   { id: 'nap', name: 'Nap' },
   { id: 'cheer', name: 'Victory dance' },
   { id: 'facepalm', name: 'Facepalm' },
@@ -753,10 +722,8 @@ export const CARD: { id: string; name: string; isSecret?: true }[] = [
 ]
 // The card entry a dance counts toward, if any.
 export const cardIdOf = (danceName: string) => {
-  const id = danceName.split(/[:+]/)[0]!
-  const alias: Record<string, string> = { typing: 'nerd' }
-  const card = alias[id] ?? id
-  return CARD.some(entry => entry.id === card) ? card : undefined
+  const id = danceName.split(':')[0]!
+  return CARD.some(entry => entry.id === id) ? id : undefined
 }
 
 const frames = new Map<string, string[]>()
@@ -794,7 +761,6 @@ export const DEMO = [
   ...DEMO_WORDS.map(word => ({ word: `${word}…`, dance: danceFor(word) })),
   { word: 'between turns', dance: IDLE },
   { word: '/clawd-chill', dance: CALM },
-  { word: 'light theme, working', dance: NERD_TYPING },
   { word: 'tests pass', dance: CHEER },
   { word: 'tests fail', dance: FACEPALM },
   { word: 'git commit', dance: CONFETTI_DANCE },
@@ -831,7 +797,6 @@ let discoBeat = -1 // beats into the party, or -1
 let discoTurn: string | undefined // the reply the party lasts for
 let isDiscoTurnDone = false
 let isCalm = false // /clawd-chill, remembered in the store
-let isDay = false // a light theme
 let reaction: { dance: Dance; beat: number } | undefined // a short burst playing
 let idleTicks = 0
 let isAsleep = false
@@ -868,13 +833,12 @@ export function travelling(dance: Dance, dx: number): Dance {
   return moved
 }
 // The moonwalk and the stroll have paths of their own.
-const travels = (dance: Dance) => isWorking && !isCalm && !isDay && dance.name !== 'moonwalk' && dance.name !== 'wander'
+const travels = (dance: Dance) => isWorking && !isCalm && dance.name !== 'moonwalk' && dance.name !== 'wander'
 
-// Calm when he's been told to chill, a nerd on a light theme, and otherwise
+// Calm when he's been told to chill, and otherwise
 // the spinner word's dance while Claude works and the idle groove in between.
 function currentDance(): Dance {
   if (isCalm) return CALM
-  if (isDay) return isWorking ? NERD_TYPING : NERD_IDLE
   return isWorking ? danceFor(spinnerWord) : IDLE
 }
 
@@ -943,12 +907,11 @@ function stepDisco($: EngineInterface) {
   }
 }
 
-// A reaction plays once through at its own tempo, by day in glasses.
+// A reaction plays once through at its own tempo, travelling with him while Claude works.
 function stepReaction($: EngineInterface) {
   const playing = reaction!
   const tempo = playing.dance.tempo ?? 1
-  const dressed = isDay ? byDay(playing.dance) : playing.dance
-  const moves = framesOf(isWorking && !isCalm && !isDay ? travelling(dressed, travelOffset(ticks)) : dressed)
+  const moves = framesOf(isWorking && !isCalm ? travelling(playing.dance, travelOffset(ticks)) : playing.dance)
   if (playing.beat % tempo === 0) paint($, moves[playing.beat / tempo]!)
   playing.beat += 1
   if (playing.beat >= moves.length * tempo) {
@@ -1051,9 +1014,8 @@ export const register: Register = on => {
       const list = [...seen]
       await update($, seenMoves, () => list)
       isCalm = (await $.store.get('calm')) === true
-      isDay = isLightTheme((await $.config.list()).find(row => row.key === 'theme')?.value)
     } catch {
-      // Without the store or the settings he just dances.
+      // Without the store he starts fresh.
     }
     return next(e)
   })
@@ -1073,13 +1035,6 @@ export const register: Register = on => {
     return {}
   })
 
-  // Day mode follows the theme as it changes.
-  on('config.set', { key: 'theme' }, async ($, e, next) => {
-    const result = await next(e)
-    if (result.deny === undefined) isDay = isLightTheme(e.value)
-    return result
-  }).catch(($, e, next) => next(e))
-
   on('command.run', { command: 'clawd-demo' }, $ => {
     startDancing($)
     demoAct = 0
@@ -1094,7 +1049,7 @@ export const register: Register = on => {
     isWorking = true
     turnId = e.turnId
     if (discoBeat >= 0 && discoTurn === undefined) discoTurn = e.turnId
-    else if (isSecretTurn(e.turnId) && demoAct < 0 && discoBeat < 0 && !isCalm && !isDay) {
+    else if (isSecretTurn(e.turnId) && demoAct < 0 && discoBeat < 0 && !isCalm) {
       secretBeat = 0
       markSeen($, 'split')
     }

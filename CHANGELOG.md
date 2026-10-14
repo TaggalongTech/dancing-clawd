@@ -16,8 +16,6 @@ The first version for friends.
 - **Toys**: hover over him for ♥, ☕ and ♪, or press 1 2 3 on his strip.
 - **`/clawd`**: the dance card, 22 moves to collect, two of them secret.
 - **`/clawd-chill`**: he stops dancing and chills. Remembered between sessions.
-- **Day mode**: on a light theme he won't dance; he's a nerd in glasses and a
-  bow tie who types while Claude works.
 - **`/clawd-demo`**: every move in a row.
 - Drawn so no frame shows a hairline in terminals with odd-width cells.
 - Easter eggs. We're not saying.

@@ -1,4 +1,4 @@
-import type { ConfigRow, On } from 'claude-code'
+import type { On } from 'claude-code'
 
 import type { Dance } from '../hooks/register'
 import { expect, mock, test } from 'claude-code/testing'
@@ -21,9 +21,7 @@ import {
   HEARTS,
   IDLE,
   isSecretTurn,
-  NERD_IDLE,
   NAP,
-  NERD_TYPING,
   SLEEP_AFTER_TICKS,
   SPLIT,
   STRETCH,
@@ -79,9 +77,9 @@ const COMMAND = { args: '', origin: { kind: 'composer' }, presentation: { isFull
 // Toasts the mod raised, in order.
 let toasts: string[] = []
 
-// Stands in for the engine beneath the mod, its theme setting as given and its
-// store in memory; returns the cells each blit painted.
-function engine(on: On, theme = 'dark', stored: Record<string, unknown> = {}): string[] {
+// Stands in for the engine beneath the mod, its store in memory as given;
+// returns the cells each blit painted.
+function engine(on: On, stored: Record<string, unknown> = {}): string[] {
   const blits: string[] = []
   toasts = []
   on('ui.toast', ($, e) => {
@@ -89,21 +87,11 @@ function engine(on: On, theme = 'dark', stored: Record<string, unknown> = {}): s
     return { value: undefined }
   })
   mock.store(on, stored)
-  const row: ConfigRow = {
-    key: 'theme',
-    label: 'Theme',
-    kind: 'choice',
-    value: theme,
-    provider: { plugin: 'claude-code', tier: 'core' },
-    isLocked: false,
-  }
-  on('config.list', () => ({ value: [row] }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('tool.call', ($, e) => {
     const isFail = e.tool === 'Bash' && e.command.includes('fail')
     return (isFail ? { result: {}, text: 'failed', isError: true } : { result: {}, text: 'ok' }) as never
   })
-  on('config.set', ($, e) => ({ value: e.value }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
@@ -238,7 +226,7 @@ function cellsOf(cells: string): [number, number, number][] {
 test('no frame of any dance draws ▛, which terminals split with a hairline', () => {
   const offsets = [-6, -4, -2, 2, 4, 6]
   const dances = [
-    IDLE, SPLIT, CALM, NERD_IDLE, NERD_TYPING, BOW, STRETCH, NAP,
+    IDLE, SPLIT, CALM, BOW, STRETCH, NAP,
     ...WORDS.map(danceFor),
     ...WORDS.flatMap(word => offsets.map(dx => travelling(danceFor(word), dx))),
     ...[BOW, CHEER, FACEPALM, CONFETTI_DANCE, HEARTS, COFFEE, HAMMER_TIME].flatMap(d => offsets.map(dx => travelling(d, dx))),
@@ -321,43 +309,13 @@ test('/clawd-chill sets him chilling with a cigarette, and toggles back', async 
 
 test('calm is remembered from one session to the next', async ($, on) => {
   const clock = mock.clock(on)
-  const blits = engine(on, 'dark', { calm: true })
+  const blits = engine(on, { calm: true })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.ui.mount(BAND)
   await clock.advance(TICK_MS * 12)
   expect(blits.length).toBeGreaterThan(0)
   for (const cells of blits) expect(framesOf(CALM)).toContain(cells)
-})
-
-test('on a light theme he is a nerd who types while Claude works, and dances again in the dark', async ($, on) => {
-  const clock = mock.clock(on)
-  const blits = engine(on, 'light')
-
-  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.ui.mount(BAND)
-  await clock.advance(TICK_MS * 8)
-  expect(blits.length).toBeGreaterThan(0)
-  for (const cells of blits) expect(framesOf(NERD_IDLE)).toContain(cells)
-  // Drawn by day, the band validates: glasses and bow tie included.
-  expect(await (await $.ui.mount(BAND)).find({ key: 'clawd' })).toBeDefined()
-
-  await $.turn.start({ text: 'hi', turnId: NORMAL_ID })
-  await $.ui.mount(spinner('Moonwalking'))
-  blits.length = 0
-  await clock.advance(TICK_MS * 8)
-  for (const cells of blits) expect(framesOf(NERD_TYPING)).toContain(cells)
-
-  await $.config.set({
-    key: 'theme',
-    value: 'dark',
-    previous: 'light',
-    provider: { plugin: 'claude-code', tier: 'core' },
-    origin: { kind: 'composer' },
-  })
-  blits.length = 0
-  await clock.advance(TICK_MS * 8)
-  for (const cells of blits) expect(framesOf(danceFor('Moonwalking'))).toContain(cells)
 })
 
 const PROMPT = { wait: false, origin: { kind: 'composer' } } as const
@@ -443,7 +401,7 @@ test('his toys show on hover and set him off, and new moves go on the dance card
 })
 
 test('/clawd opens the dance card, secrets hidden until seen', async ($, on) => {
-  engine(on, 'dark', { seen: ['moonwalk', 'hearts'] })
+  engine(on, { seen: ['moonwalk', 'hearts'] })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ran = await $.command.run({ command: 'clawd', ...COMMAND })

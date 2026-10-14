@@ -6,7 +6,7 @@ A tiny Claude mascot for Claude Code. He stands just above your prompt, about
 5 cells wide and 2 rows tall, drawn in the same block style as Claude Code's own
 logo, and he loves to dance:
 
-![Clawd dancing to Claude Code's spinner words, cheering at passing tests, chilling, typing in day mode, catching hearts, and a glimpse of the party](assets/preview.svg)
+![Clawd dancing to Claude Code's spinner words, cheering at passing tests, chilling, catching hearts, and a glimpse of the party](assets/preview.svg)
 
 - **While Claude works** he dances to the spinner's word, travelling back and
   forth across his strip as he goes. Each word gets its own dance: pondering words look around with a hand to the chin, cooking words stir
@@ -29,8 +29,6 @@ logo, and he loves to dance:
 - **`/clawd-chill`** tells him to stop dancing and chill: eyes shut, a cigarette
   in hand, smoke curling up. Run it again to get him dancing. He remembers
   between sessions.
-- **On a light theme** he won't dance. Clawd only dances in the dark; by day
-  he's a nerd in glasses and a bow tie who types away while Claude works.
 - **Now and then** he does something else entirely. Keep an eye on him.
 - **The right words** in a prompt start a party. We're not saying which. 🪩
 
@@ -64,7 +62,7 @@ Answer `y` to add the marketplace, then press Enter for the user scope.
 /clawd-demo
 ```
 
-Plays every dance back to back, then `/clawd-chill`, day mode, his reactions
+Plays every dance back to back, then `/clawd-chill`, his reactions
 and his nap, each labeled with what sets it off. The demo doesn't count toward
 your dance card.
 
