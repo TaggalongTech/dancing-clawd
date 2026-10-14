@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { DEMO, DEMO_MS, danceFor, framesOf, IDLE, TICK_MS } from '../hooks/register'
+import { DEMO, DEMO_MS, danceFor, framesOf, IDLE, isSecretTurn, SPLIT, TICK_MS } from '../hooks/register'
 
 const BAND = {
   plugin: 'dancing-clawd',
@@ -24,6 +24,11 @@ const spinner = (word: string) =>
     component: 'Spinner',
     props: { word, message: null, suffix: '…', mode: 'thinking' },
   }) as const
+
+// Turn ids that do and don't set off the secret split.
+const IDS = Array.from({ length: 2000 }, (_, i) => `turn-${i}`)
+const SECRET_ID = IDS.find(isSecretTurn)!
+const NORMAL_ID = IDS.find(id => !isSecretTurn(id))!
 
 // Spinner words Claude Code samples, Moonwalking among them.
 const WORDS = [
@@ -83,7 +88,7 @@ test('Clawd grooves slowly while idle and dances the spinner word at full speed'
   expect(blits).toHaveLength(4)
   for (const cells of blits) expect(framesOf(IDLE)).toContain(cells)
 
-  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await $.turn.start({ text: 'hi', turnId: NORMAL_ID })
   const row = await $.ui.mount(spinner('Moonwalking'))
   expect(await row.find({ type: 'Text', text: 'engine' })).toBeDefined()
   blits.length = 0
@@ -91,7 +96,7 @@ test('Clawd grooves slowly while idle and dances the spinner word at full speed'
   expect(blits).toHaveLength(8)
   for (const cells of blits) expect(framesOf(danceFor('Moonwalking'))).toContain(cells)
 
-  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: NORMAL_ID, reason: 'answer' })
   blits.length = 0
   await clock.advance(TICK_MS * 8)
   expect(blits).toHaveLength(4)
@@ -129,4 +134,30 @@ test('/clawd-demo plays every dance in a row, then goes back to grooving', async
   blits.length = 0
   await clock.advance(TICK_MS * 8)
   expect(blits).toHaveLength(4)
+})
+
+test('the secret split turns up about one turn in twenty', () => {
+  const rate = IDS.filter(isSecretTurn).length / IDS.length
+  expect(rate).toBeGreaterThan(0.03)
+  expect(rate).toBeLessThan(0.07)
+  expect(SPLIT.frames.some(frame => frame.length === 2)).toBe(true)
+  expect(DEMO.map(act => act.dance.name)).not.toContain('split')
+})
+
+test('a secret turn plays the split once, then the spinner word dance', async ($, on) => {
+  const clock = mock.clock(on)
+  const blits = engine(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.ui.mount(BAND)
+  await $.turn.start({ text: 'hi', turnId: SECRET_ID })
+  await $.ui.mount(spinner('Moonwalking'))
+  await clock.advance(TICK_MS * SPLIT.frames.length)
+  expect(blits.length).toBeGreaterThan(SPLIT.frames.length / 2)
+  for (const cells of blits) expect(framesOf(SPLIT)).toContain(cells)
+
+  blits.length = 0
+  await clock.advance(TICK_MS * 8)
+  expect(blits).toHaveLength(8)
+  for (const cells of blits) expect(framesOf(danceFor('Moonwalking'))).toContain(cells)
 })

@@ -16,6 +16,7 @@ and he never stops dancing:
 - **Only "Moonwalking…"** gets the moonwalk: he glides backwards across his strip,
   facing forward.
 - **Between turns** he grooves at half speed.
+- **Now and then** he does something else entirely. Keep an eye on him.
 
 Terminal only. Collapse him with `ctrl+x ctrl+a` or the `[-]` at the end of his
 strip.

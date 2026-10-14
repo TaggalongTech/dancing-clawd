@@ -4,11 +4,13 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { DemoLabel } from '../types'
 
 // A mini Clawd, drawn the way Claude Code's own logo is: quadrant blocks, so
-// each terminal cell is 2x2 pixels. The stage is 18x4 pixels, 9 cells by 2
-// rows; Clawd is 10x4 of it (5 cells) and moves about the rest.
-const W = 18
+// each terminal cell is 2x2 pixels. The stage is 26x4 pixels, 13 cells by 2
+// rows; Clawd is 10x4 of it (5 cells) and moves about the rest, with room
+// for two of him.
+const W = 26
 const H = 4
-const HOME = 4 // Clawd's left edge, in pixels, when he stands centered
+const HOME = 8 // Clawd's left edge, in pixels, when he stands centered
+const FAR_RIGHT = W - 10 // his left edge at the stage's right end
 export const COLUMNS = W / 2
 export const ROWS = H / 2
 export const TICK_MS = 120 // one move per beat while Claude works; one per two beats idle
@@ -43,14 +45,14 @@ const ROOF = P({ left: 'up', right: 'up' })
 // Short phrases a dance is strung together from.
 const PHRASES = {
   roof: [STAND, ROOF, STAND, ROOF],
-  swayLeft: [P({ x: 2, left: 'up', look: -1 }), P({ x: 2, look: -1 }), STAND],
-  swayRight: [P({ x: 6, right: 'up', look: 1 }), P({ x: 6, look: 1 }), STAND],
+  swayLeft: [P({ x: HOME - 2, left: 'up', look: -1 }), P({ x: HOME - 2, look: -1 }), STAND],
+  swayRight: [P({ x: HOME + 2, right: 'up', look: 1 }), P({ x: HOME + 2, look: 1 }), STAND],
   wave: [P({ left: 'up', look: -1 }), P({ right: 'up', look: 1 }), P({ left: 'up', look: -1 }), P({ right: 'up', look: 1 })],
   shimmy: [
-    P({ x: 5, left: 'up', right: 'down' }),
-    P({ x: 3, left: 'down', right: 'up' }),
-    P({ x: 5, left: 'up', right: 'down' }),
-    P({ x: 3, left: 'down', right: 'up' }),
+    P({ x: HOME + 1, left: 'up', right: 'down' }),
+    P({ x: HOME - 1, left: 'down', right: 'up' }),
+    P({ x: HOME + 1, left: 'up', right: 'down' }),
+    P({ x: HOME - 1, left: 'down', right: 'up' }),
     STAND,
   ],
   spin: [
@@ -77,10 +79,10 @@ const PHRASES = {
     P({ left: 'down', right: 'down', look: 1 }),
   ],
   frolic: [
-    P({ x: 3, left: 'up' }),
-    P({ x: 4, right: 'up' }),
-    P({ x: 5, right: 'up' }),
-    P({ x: 4, left: 'up' }),
+    P({ x: HOME - 1, left: 'up' }),
+    P({ x: HOME, right: 'up' }),
+    P({ x: HOME + 1, right: 'up' }),
+    P({ x: HOME, left: 'up' }),
   ],
   flail: [
     P({ left: 'up', right: 'down', look: -1 }),
@@ -104,15 +106,15 @@ function walk(from: number, to: number, look: number): Pose[] {
 
 // The moonwalk glides backwards: facing one way, sliding the other.
 const MOONWALK_POSES = [
-  ...walk(8, 0, 1),
+  ...walk(FAR_RIGHT, 0, 1),
   P({ x: 0, face: 'side', look: -1, left: 'in', right: 'in' }),
-  ...walk(0, 8, -1),
-  P({ x: 8, face: 'side', look: 1, left: 'in', right: 'in' }),
+  ...walk(0, FAR_RIGHT, -1),
+  P({ x: FAR_RIGHT, face: 'side', look: 1, left: 'in', right: 'in' }),
 ]
 const WANDER_POSES = [
-  ...walk(HOME, 8, 1),
-  P({ x: 8, face: 'side', look: -1, left: 'in', right: 'in' }),
-  ...walk(8, 0, -1),
+  ...walk(HOME, FAR_RIGHT, 1),
+  P({ x: FAR_RIGHT, face: 'side', look: -1, left: 'in', right: 'in' }),
+  ...walk(FAR_RIGHT, 0, -1),
   P({ x: 0, face: 'side', look: 1, left: 'in', right: 'in' }),
   ...walk(0, HOME, 1),
 ]
@@ -192,26 +194,108 @@ function mix(word: string, count: number, skip: Phrase[] = []): Phrase[] {
   return picked
 }
 
-export type Dance = { name: string; poses: Pose[] }
+// A frame is everyone on stage at one beat: Clawd, or Clawd and his twin.
+type Frame = Pose[]
+export type Dance = { name: string; frames: Frame[] }
+const solo = (poses: Pose[]): Frame[] => poses.map(pose => [pose])
 
 export function danceFor(word: string | undefined): Dance {
   const w = (word ?? '').toLowerCase()
-  if (w.startsWith('moonwalk')) return { name: 'moonwalk', poses: MOONWALK_POSES }
+  if (w.startsWith('moonwalk')) return { name: 'moonwalk', frames: solo(MOONWALK_POSES) }
   if (/wander|meander|perambulat|schlep|mosey|spelunk|stroll|saunter|roam|explor|traips|herd/.test(w)) {
-    return { name: 'wander', poses: WANDER_POSES }
+    return { name: 'wander', frames: solo(WANDER_POSES) }
   }
   const theme = THEMES.find(t => t.match.test(w))
   const phrases = theme ? [...theme.phrases, ...mix(w, 1, theme.phrases)] : mix(w, 3)
   return {
     name: `${theme?.name ?? 'mix'}:${phrases.join('+')}`,
-    poses: phrases.flatMap(p => PHRASES[p]),
+    frames: solo(phrases.flatMap(p => PHRASES[p])),
   }
 }
 
-export const IDLE: Dance = { name: 'idle', poses: (['roof', 'swayLeft', 'swayRight', 'wave'] as Phrase[]).flatMap(p => PHRASES[p]) }
+export const IDLE: Dance = {
+  name: 'idle',
+  frames: solo((['roof', 'swayLeft', 'swayRight', 'wave'] as Phrase[]).flatMap(p => PHRASES[p])),
+}
 
-function pixels(p: Pose): Uint8Array {
+// The secret move: Clawd shakes, splits in two, the twins dance facing each
+// other and then side by side, and they merge back into one.
+const TWIN_L = 2 // the twins' spots, a cell apart
+const TWIN_R = 14
+const facing = (a: Partial<Pose> = {}, b: Partial<Pose> = {}): Frame => [
+  P({ x: TWIN_L, look: 1, ...a }),
+  P({ x: TWIN_R, look: -1, ...b }),
+]
+const together = (pose: Partial<Pose> = {}, dx = 0): Frame => [
+  P({ ...pose, x: TWIN_L + dx }),
+  P({ ...pose, x: TWIN_R + dx }),
+]
+const one = (pose: Partial<Pose> = {}): Frame => [P(pose)]
+const halfway: Frame = [P({ x: HOME - 4, look: 1 }), P({ x: HOME + 4, look: -1 })]
+const stretched: Frame = [P({ x: HOME - 2 }), P({ x: HOME + 2 })]
+const highFive = facing({ x: TWIN_L + 1, right: 'up' }, { x: TWIN_R - 1, left: 'up' })
+
+export const SPLIT: Dance = {
+  name: 'split',
+  frames: [
+    // shake, stretch, split
+    one(),
+    one({ x: HOME - 1, blink: true }),
+    one({ x: HOME + 1, blink: true }),
+    one({ x: HOME - 1, blink: true }),
+    one({ x: HOME + 1, blink: true }),
+    stretched,
+    halfway,
+    facing(),
+    facing(),
+    // face to face: wave, high five, step apart
+    facing({ right: 'up' }, { left: 'up' }),
+    facing(),
+    facing({ right: 'up' }, { left: 'up' }),
+    facing(),
+    highFive,
+    highFive,
+    facing(),
+    facing({ x: TWIN_L - 2, left: 'up', look: -1 }, { x: TWIN_R + 2, right: 'up', look: 1 }),
+    facing({ x: TWIN_L - 2, look: -1 }, { x: TWIN_R + 2, look: 1 }),
+    facing(),
+    // side by side: raise the roof, sway left, sway right, spin
+    together(),
+    together({ left: 'up', right: 'up' }),
+    together(),
+    together({ left: 'up', right: 'up' }),
+    together({ left: 'up', look: -1 }, -2),
+    together({ look: -1 }, -2),
+    together(),
+    together({ right: 'up', look: 1 }, 2),
+    together({ look: 1 }, 2),
+    together(),
+    together({ face: 'side', look: 1, left: 'in', right: 'in' }),
+    together({ face: 'back' }),
+    together({ face: 'side', look: -1, left: 'in', right: 'in' }),
+    together(),
+    // back into one
+    facing(),
+    halfway,
+    stretched,
+    one({ blink: true }),
+    one(),
+    one({ left: 'up', right: 'up' }),
+    one(),
+  ],
+}
+
+// Roughly one turn in SECRET_ODDS starts with the split, decided by the turn's id.
+const SECRET_ODDS = 20
+export const isSecretTurn = (id: string) => hash(`split:${id}`) % SECRET_ODDS === 0
+
+function pixels(frame: Frame): Uint8Array {
   const grid = new Uint8Array(W * H)
+  for (const pose of frame) draw(grid, pose)
+  return grid
+}
+
+function draw(grid: Uint8Array, p: Pose) {
   const set = (x: number, y: number, value = 1) => {
     const at = p.x + x
     if (at >= 0 && at < W && y >= 0 && y < H) grid[y * W + at] = value
@@ -235,7 +319,6 @@ function pixels(p: Pose): Uint8Array {
 
   set(2 + p.stride, 3)
   set(7 - p.stride, 3)
-  return grid
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -252,8 +335,8 @@ function base64(bytes: Uint8Array): string {
 }
 
 // A Raster's cells: per cell, little-endian u32 [codePoint, foreground, background].
-export function encode(p: Pose): string {
-  const grid = pixels(p)
+export function encode(frame: Frame): string {
+  const grid = pixels(frame)
   const at = (x: number, y: number) => grid[y * W + x] ?? 0
   const bytes = new Uint8Array(COLUMNS * ROWS * 12)
   const view = new DataView(bytes.buffer)
@@ -276,7 +359,7 @@ const frames = new Map<string, string[]>()
 export function framesOf(dance: Dance): string[] {
   let encoded = frames.get(dance.name)
   if (encoded === undefined) {
-    encoded = dance.poses.map(encode)
+    encoded = dance.frames.map(encode)
     frames.set(dance.name, encoded)
   }
   return encoded
@@ -303,14 +386,14 @@ export const DEMO = [
   ...DEMO_WORDS.map(word => ({ word: `${word}…`, dance: danceFor(word) })),
   { word: 'between turns', dance: IDLE },
 ]
-const beatsOf = (dance: Dance) => dance.poses.length * Math.ceil(DEMO_MIN_BEATS / dance.poses.length)
+const beatsOf = (dance: Dance) => dance.frames.length * Math.ceil(DEMO_MIN_BEATS / dance.frames.length)
 export const DEMO_MS = DEMO.reduce((sum, act) => sum + beatsOf(act.dance), 0) * TICK_MS
 
 const demoLabel = atom({ plugin: 'dancing-clawd', key: 'demoLabel' } as const, null as DemoLabel)
 
 // What the band shows and why; module state starts over on each reload.
 let bandId: string | undefined
-let shown = encode(STAND)
+let shown = encode([STAND])
 let isTicking = false
 let isWorking = false
 let turnId: string | undefined
@@ -320,6 +403,7 @@ let beat = 0
 let ticks = 0
 let demoAct = -1 // the DEMO entry playing, or -1
 let demoBeat = 0
+let secretBeat = -1 // the SPLIT frame playing, or -1
 
 function paint($: EngineInterface, cells: string) {
   if (cells === shown) return
@@ -334,6 +418,7 @@ function paint($: EngineInterface, cells: string) {
 function tick($: EngineInterface) {
   ticks += 1
   if (demoAct >= 0) return stepDemo($)
+  if (secretBeat >= 0) return stepSecret($)
   if (!isWorking && ticks % 2 === 1) return
   const next = isWorking ? danceFor(spinnerWord) : IDLE
   if (next.name !== dance) {
@@ -366,6 +451,17 @@ function stepDemo($: EngineInterface) {
   }
 }
 
+// The split plays once through at full speed, then the dance starts over.
+function stepSecret($: EngineInterface) {
+  const moves = framesOf(SPLIT)
+  paint($, moves[secretBeat]!)
+  secretBeat += 1
+  if (secretBeat >= moves.length) {
+    secretBeat = -1
+    dance = ''
+  }
+}
+
 function startDancing($: EngineInterface) {
   if (isTicking) return
   isTicking = true
@@ -394,6 +490,7 @@ export const register: Register = on => {
     startDancing($)
     isWorking = true
     turnId = e.turnId
+    if (isSecretTurn(e.turnId) && demoAct < 0) secretBeat = 0
     return next(e)
   })
 
