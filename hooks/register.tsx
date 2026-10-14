@@ -22,8 +22,7 @@ type Pose = {
   x: number // left edge on the stage, in pixels
   left: Arm
   right: Arm
-  leftFoot: boolean // down, or lifted
-  rightFoot: boolean
+  stride: number // feet stay on the ground; walking steps them in this many pixels
   look: number // eyes glance left (-1) or right (1)
   face: 'front' | 'side' | 'back'
   blink: boolean
@@ -33,8 +32,7 @@ const STAND: Pose = {
   x: HOME,
   left: 'mid',
   right: 'mid',
-  leftFoot: true,
-  rightFoot: true,
+  stride: 0,
   look: 0,
   face: 'front',
   blink: false,
@@ -45,8 +43,8 @@ const ROOF = P({ left: 'up', right: 'up' })
 // Short phrases a dance is strung together from.
 const PHRASES = {
   roof: [STAND, ROOF, STAND, ROOF],
-  swayLeft: [P({ x: 2, left: 'up', rightFoot: false, look: -1 }), P({ x: 2, leftFoot: false, look: -1 }), STAND],
-  swayRight: [P({ x: 6, right: 'up', leftFoot: false, look: 1 }), P({ x: 6, rightFoot: false, look: 1 }), STAND],
+  swayLeft: [P({ x: 2, left: 'up', look: -1 }), P({ x: 2, look: -1 }), STAND],
+  swayRight: [P({ x: 6, right: 'up', look: 1 }), P({ x: 6, look: 1 }), STAND],
   wave: [P({ left: 'up', look: -1 }), P({ right: 'up', look: 1 }), P({ left: 'up', look: -1 }), P({ right: 'up', look: 1 })],
   shimmy: [
     P({ x: 5, left: 'up', right: 'down' }),
@@ -74,14 +72,14 @@ const PHRASES = {
   stir: [P({ right: 'up', look: 1 }), P({ look: 1 }), P({ right: 'down', look: 1 }), P({ look: 1 })],
   hammer: [
     P({ left: 'up', right: 'up' }),
-    P({ left: 'down', right: 'down', leftFoot: false }),
+    P({ left: 'down', right: 'down' }),
     P({ left: 'up', right: 'up' }),
-    P({ left: 'down', right: 'down', rightFoot: false }),
+    P({ left: 'down', right: 'down', look: 1 }),
   ],
   frolic: [
-    P({ x: 3, leftFoot: false, left: 'up' }),
+    P({ x: 3, left: 'up' }),
     P({ x: 4, right: 'up' }),
-    P({ x: 5, rightFoot: false, right: 'up' }),
+    P({ x: 5, right: 'up' }),
     P({ x: 4, left: 'up' }),
   ],
   flail: [
@@ -94,12 +92,12 @@ const PHRASES = {
 } satisfies Record<string, Pose[]>
 type Phrase = keyof typeof PHRASES
 
-// Walking: a step a beat, feet taking turns, from one spot to another.
+// Walking: a step a beat, feet stepping in and out, from one spot to another.
 function walk(from: number, to: number, look: number): Pose[] {
   const poses: Pose[] = []
   const dir = Math.sign(to - from)
   for (let x = from, i = 0; x !== to + dir; x += dir, i++) {
-    poses.push(P({ x, look, leftFoot: i % 2 === 0, rightFoot: i % 2 === 1 }))
+    poses.push(P({ x, look, stride: i % 2 }))
   }
   return poses
 }
@@ -235,8 +233,8 @@ function pixels(p: Pose): Uint8Array {
   if (leftRow !== null) set(0, leftRow)
   if (rightRow !== null) set(9, rightRow)
 
-  if (p.leftFoot) set(2, 3)
-  if (p.rightFoot) set(7, 3)
+  set(2 + p.stride, 3)
+  set(7 - p.stride, 3)
   return grid
 }
 
